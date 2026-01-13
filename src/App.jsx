@@ -5,7 +5,7 @@ import {
   ClipboardList, PenTool, Heart, 
   BarChart2, Menu, Plus, Trash2, 
   Printer, ChevronDown, Download, Upload, FileSpreadsheet,
-  CalendarDays, FileText, Save, Database, CheckSquare, FileType
+  CalendarDays, FileText, Database, CheckSquare
 } from 'lucide-react';
 
 // --- UTILS & DATA STRUCTURE ---
@@ -13,6 +13,7 @@ import {
 const initialIdentity = {
   schoolName: '',
   principalName: '', 
+  principalNip: '', // Tambahan NIP KS
   subject: '',
   teacherName: '',
   nip: '',
@@ -22,10 +23,8 @@ const initialIdentity = {
 
 // Helper: Hitung Statistik Kehadiran
 const getAttendanceStats = (student) => {
-    // Hitung jumlah 'H' dari history harian
     const historyValues = Object.values(student.attendanceHistory || {});
     const h = historyValues.filter(val => val === 'H').length;
-    // Ambil rekap manual S, I, A
     const s = parseInt(student.recap?.s || 0);
     const i = parseInt(student.recap?.i || 0);
     const a = parseInt(student.recap?.a || 0);
@@ -34,24 +33,18 @@ const getAttendanceStats = (student) => {
 
 // --- RUMUS PENILAIAN BARU (4 PILAR) ---
 const calculateFinalGrade = (student) => {
-  // 1. Rata-rata Formatif (35%)
   const formativeScores = Object.values(student.formative || {}).map(v => parseInt(v)||0);
   const avgFormative = formativeScores.length ? formativeScores.reduce((a,b)=>a+b,0)/formativeScores.length : 0;
 
-  // 2. Rata-rata Sumatif (35%)
   const summativeScores = Object.values(student.summative || {}).map(v => parseInt(v)||0);
   const avgSummative = summativeScores.length ? summativeScores.reduce((a,b)=>a+b,0)/summativeScores.length : 0;
 
-  // 3. Rata-rata Sikap (20%)
   const attitudeScores = Object.values(student.attitude || {}).map(v => parseInt(v)||0);
   const avgAttitude = attitudeScores.length ? attitudeScores.reduce((a,b)=>a+b,0)/attitudeScores.length : 0;
 
-  // 4. Nilai Kehadiran (10%)
   const { h, total } = getAttendanceStats(student);
-  // Jika belum ada data kehadiran, default 100 agar nilai tidak jatuh di awal semester
   const attendanceScore = total > 0 ? (h / total) * 100 : 100;
 
-  // Kalkulasi Akhir
   const finalScore = (avgFormative * 0.35) + (avgSummative * 0.35) + (avgAttitude * 0.20) + (attendanceScore * 0.10);
 
   return {
@@ -108,7 +101,18 @@ const IdentitySection = ({ identity, setIdentity, classList, setClassList, selec
         <div className="bg-white p-6 rounded-lg shadow-sm border space-y-4">
           <h3 className="font-bold text-blue-600 flex items-center gap-2"><User size={18}/> Data Administrasi</h3>
           <div><label className="text-sm text-slate-500">Nama Sekolah</label><input type="text" className="w-full p-2 border rounded" value={identity.schoolName} onChange={e=>setIdentity({...identity, schoolName: e.target.value})} /></div>
-          <div><label className="text-sm text-slate-500">Nama Kepala Sekolah</label><input type="text" className="w-full p-2 border rounded" placeholder="Nama & Gelar" value={identity.principalName} onChange={e=>setIdentity({...identity, principalName: e.target.value})} /></div>
+          
+          <div className="flex gap-2">
+            <div className="flex-1">
+                <label className="text-sm text-slate-500">Nama Kepala Sekolah</label>
+                <input type="text" className="w-full p-2 border rounded" placeholder="Nama & Gelar" value={identity.principalName} onChange={e=>setIdentity({...identity, principalName: e.target.value})} />
+            </div>
+            <div className="w-1/3">
+                <label className="text-sm text-slate-500">NIP KS</label>
+                <input type="text" className="w-full p-2 border rounded" placeholder="NIP" value={identity.principalNip} onChange={e=>setIdentity({...identity, principalNip: e.target.value})} />
+            </div>
+          </div>
+
           <div><label className="text-sm text-slate-500">Mata Pelajaran</label><input type="text" className="w-full p-2 border rounded" value={identity.subject} onChange={e=>setIdentity({...identity, subject: e.target.value})} /></div>
           <div><label className="text-sm text-slate-500">Nama Guru</label><input type="text" className="w-full p-2 border rounded" value={identity.teacherName} onChange={e=>setIdentity({...identity, teacherName: e.target.value})} /></div>
           <div><label className="text-sm text-slate-500">NIP</label><input type="text" className="w-full p-2 border rounded" value={identity.nip} onChange={e=>setIdentity({...identity, nip: e.target.value})} /></div>
@@ -128,8 +132,9 @@ const IdentitySection = ({ identity, setIdentity, classList, setClassList, selec
   );
 };
 
-const AttendanceSection = ({ selectedClass, students, onUpdateStudents, selectedDate }) => {
+const AttendanceSection = ({ selectedClass, students, onUpdateStudents, selectedDate, identity }) => {
   const [newStudent, setNewStudent] = useState({ name: '', nim: '', nisn: '', gender: 'L' });
+  const [exportMonth, setExportMonth] = useState(new Date().toISOString().slice(0, 7)); // Format YYYY-MM
 
   if (!selectedClass) return <div className="p-10 text-center text-slate-500">Silakan pilih/tambah kelas terlebih dahulu di menu Identitas.</div>;
 
@@ -180,17 +185,59 @@ const AttendanceSection = ({ selectedClass, students, onUpdateStudents, selected
     e.target.value = null;
   };
 
-  const handleExportAttendance = () => {
+  // --- EXPORT BULANAN ---
+  const handleExportMonthly = () => {
     if (typeof XLSX === 'undefined') { alert("Fitur Excel belum aktif."); return; }
-    const dataToExport = students.map((s, idx) => ({
-        No: idx + 1, NISN: s.nisn, Nama: s.name, Gender: s.gender,
-        [`Hadir (${selectedDate})`]: s.attendanceHistory?.[selectedDate] === 'H' ? 'Hadir' : 'Tidak',
-        'Total Sakit': s.recap?.s || 0, 'Total Izin': s.recap?.i || 0, 'Total Alpha': s.recap?.a || 0
-    }));
-    const ws = XLSX.utils.json_to_sheet(dataToExport);
+    
+    const [year, month] = exportMonth.split('-');
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const monthName = new Date(year, month - 1, 1).toLocaleString('id-ID', { month: 'long' });
+
+    // Header Awal
+    const headers = ["No", "NISN", "Nama", "L/P"];
+    // Tambah tanggal 1-31
+    for(let i=1; i<=daysInMonth; i++) headers.push(i.toString());
+    // Tambah Total
+    headers.push("H", "S", "I", "A");
+
+    // Isi Data
+    const dataRows = students.map((s, idx) => {
+        const row = [idx + 1, s.nisn, s.name, s.gender];
+        let totalH = 0;
+        
+        // Loop tanggal 1 sampai akhir bulan
+        for(let i=1; i<=daysInMonth; i++) {
+            const dateStr = `${year}-${month}-${String(i).padStart(2, '0')}`;
+            const status = s.attendanceHistory?.[dateStr] || '';
+            row.push(status);
+            if(status === 'H') totalH++;
+        }
+
+        // Ambil rekap manual untuk S, I, A (karena biasanya input S/I/A itu akumulatif, atau bisa dihitung dari history jika history lengkap)
+        // Di sini kita pakai history H, tapi S/I/A dari input manual rekap agar fleksibel
+        row.push(totalH, s.recap?.s||0, s.recap?.i||0, s.recap?.a||0);
+        return row;
+    });
+
+    // Buat Worksheet dengan Array of Arrays (AoA)
+    const wsData = [
+        [`REKAP ABSENSI KELAS ${selectedClass}`],
+        [`BULAN: ${monthName.toUpperCase()} ${year}`],
+        [], // Spasi
+        headers,
+        ...dataRows,
+        [], [], // Spasi sebelum TTD
+        ["Mengetahui,", "", "", "", "", "Tanggal Cetak:", formatDateIndo(new Date().toISOString())],
+        ["Kepala Sekolah", "", "", "", "", "Guru Mata Pelajaran"],
+        [], [], [], // Spasi Tanda Tangan
+        [identity.principalName, "", "", "", "", identity.teacherName],
+        [`NIP. ${identity.principalNip}`, "", "", "", "", `NIP. ${identity.nip}`]
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Presensi");
-    XLSX.writeFile(wb, `Presensi_${selectedClass}_${selectedDate}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, "Rekap Bulanan");
+    XLSX.writeFile(wb, `Absensi_Bulanan_${selectedClass}_${monthName}.xlsx`);
   };
 
   return (
@@ -199,14 +246,23 @@ const AttendanceSection = ({ selectedClass, students, onUpdateStudents, selected
          <div><h2 className="text-2xl font-bold text-slate-800">2. Daftar Hadir (Presensi)</h2><p className="text-sm text-blue-600 font-medium mt-1"><Calendar size={14} className="inline"/> {formatDateIndo(selectedDate)}</p></div>
          <div className="flex gap-2 items-center"><button onClick={handleMarkAllPresent} className="bg-blue-100 text-blue-700 px-4 py-2 rounded-lg font-bold hover:bg-blue-200"><CheckSquare size={18} className="inline"/> Hadir Semua</button><div className="bg-blue-100 px-4 py-2 rounded-lg font-bold text-blue-800">{selectedClass}</div></div>
       </div>
-      <div className="bg-white p-3 rounded-lg border flex justify-between mb-4 shadow-sm">
+      
+      {/* MANAJEMEN DATA & EXPORT */}
+      <div className="bg-white p-3 rounded-lg border flex flex-wrap justify-between items-center mb-4 shadow-sm gap-2">
         <div className="text-sm font-medium flex gap-2"><Users size={18}/> Manajemen Data</div>
-        <div className="flex gap-2">
-            <button onClick={handleDownloadTemplate} className="bg-slate-100 border px-3 py-1 rounded text-xs">1. Template</button>
-            <label className="bg-green-600 text-white px-3 py-1 rounded text-xs cursor-pointer flex gap-1"><Upload size={14}/> 2. Import<input type="file" className="hidden" onChange={handleImportExcel}/></label>
-            <button onClick={handleExportAttendance} className="bg-blue-600 text-white px-3 py-1 rounded text-xs flex gap-1"><Download size={14}/> Export Hari Ini</button>
+        <div className="flex flex-wrap gap-2 items-center">
+            <button onClick={handleDownloadTemplate} className="bg-slate-100 border px-3 py-1 rounded text-xs">Template</button>
+            <label className="bg-green-600 text-white px-3 py-1 rounded text-xs cursor-pointer flex gap-1"><Upload size={14}/> Import<input type="file" className="hidden" onChange={handleImportExcel}/></label>
+            <div className="w-px bg-slate-300 h-6 mx-1"></div>
+            
+            {/* EXPORT BULANAN */}
+            <div className="flex items-center gap-1 border border-blue-200 bg-blue-50 px-2 py-1 rounded">
+                <input type="month" value={exportMonth} onChange={e=>setExportMonth(e.target.value)} className="bg-transparent text-xs outline-none text-blue-800 font-bold"/>
+                <button onClick={handleExportMonthly} className="bg-blue-600 text-white px-3 py-1 rounded text-xs flex gap-1 hover:bg-blue-700"><FileSpreadsheet size={14}/> Rekap Sebulan</button>
+            </div>
         </div>
       </div>
+
       <div className="bg-slate-50 p-3 rounded border flex gap-2 items-end mb-4">
         <input placeholder="Nama Siswa" value={newStudent.name} onChange={e=>setNewStudent({...newStudent, name:e.target.value})} className="flex-1 p-2 border rounded text-sm"/>
         <button onClick={addStudent} className="bg-blue-600 text-white p-2 rounded"><Plus/></button>
@@ -255,6 +311,7 @@ const JournalSection = ({ selectedClass, curriculumData, journalData, setJournal
   const handleExportJournal = () => {
     if (typeof XLSX === 'undefined') { alert("Fitur Excel belum aktif."); return; }
     if (filteredJournal.length === 0) { alert("Tidak ada data jurnal."); return; }
+    // Export raw text agar format poin terjaga
     const ws = XLSX.utils.json_to_sheet(filteredJournal.map((j, idx) => ({ No: idx + 1, Tanggal: j.date, Jam: j.time, Kelas: j.class, Materi: j.scope, TP: j.tp, Kegiatan: j.activity, Refleksi: j.reflection })));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Jurnal");
@@ -271,14 +328,64 @@ const JournalSection = ({ selectedClass, curriculumData, journalData, setJournal
           <div><label className="text-xs font-bold text-slate-500">Tanggal</label><input type="text" className="w-full p-2 border rounded bg-slate-100 text-slate-500" value={formatDateIndo(selectedDate)} readOnly/></div>
           <div><label className="text-xs font-bold">Jam Pelajaran</label><input type="text" className="w-full p-2 border rounded" placeholder="Misal: 1-2" value={entry.time} onChange={e=>setEntry({...entry, time:e.target.value})}/></div>
           <div className="col-span-2"><label className="text-xs font-bold">Lingkup Materi</label><select className="w-full p-2 border rounded" value={entry.scope} onChange={e=>setEntry({...entry, scope:e.target.value})}><option value="">-- Pilih Materi --</option>{curriculumData.map(c => <option key={c.id} value={c.scope}>{c.scope}</option>)}</select></div>
-          <div className="col-span-2"><label className="text-xs font-bold">Tujuan Pembelajaran</label><input type="text" className="w-full p-2 border rounded" value={entry.tp} onChange={e=>setEntry({...entry, tp:e.target.value})}/></div>
-          <div className="col-span-2"><label className="text-xs font-bold">Kegiatan Pembelajaran</label><textarea className="w-full p-2 border rounded h-20" value={entry.activity} onChange={e=>setEntry({...entry, activity:e.target.value})}></textarea></div>
-          <div><label className="text-xs font-bold">Refleksi</label><textarea className="w-full p-2 border rounded h-16" value={entry.reflection} onChange={e=>setEntry({...entry, reflection:e.target.value})}></textarea></div>
-          <div><label className="text-xs font-bold">Tindak Lanjut</label><textarea className="w-full p-2 border rounded h-16" value={entry.followup} onChange={e=>setEntry({...entry, followup:e.target.value})}></textarea></div>
+          
+          <div className="col-span-2">
+            <label className="text-xs font-bold">Tujuan Pembelajaran (TP)</label>
+            <textarea 
+                className="w-full p-2 border rounded h-24 whitespace-pre-wrap" 
+                placeholder={`Contoh:\n1. Menjelaskan pengertian...\n2. Menganalisis struktur...`}
+                value={entry.tp} 
+                onChange={e=>setEntry({...entry, tp:e.target.value})}
+            />
+          </div>
+          <div className="col-span-2">
+            <label className="text-xs font-bold">Kegiatan Pembelajaran</label>
+            <textarea 
+                className="w-full p-2 border rounded h-32 whitespace-pre-wrap" 
+                placeholder={`Pendahuluan:\n- Salam dan doa\n- Apersepsi\n\nInti:\n- Diskusi kelompok\n- Presentasi\n\nPenutup:\n- Kesimpulan\n- Doa`}
+                value={entry.activity} 
+                onChange={e=>setEntry({...entry, activity:e.target.value})}
+            />
+          </div>
+          <div>
+            <label className="text-xs font-bold">Refleksi</label>
+            <textarea 
+                className="w-full p-2 border rounded h-20 whitespace-pre-wrap" 
+                placeholder="Contoh: Siswa antusias, namun perlu penguatan di bagian..."
+                value={entry.reflection} 
+                onChange={e=>setEntry({...entry, reflection:e.target.value})}
+            />
+          </div>
+          <div>
+            <label className="text-xs font-bold">Tindak Lanjut</label>
+            <textarea 
+                className="w-full p-2 border rounded h-20 whitespace-pre-wrap" 
+                placeholder="Contoh: Remedial untuk 3 siswa, pengayaan untuk..."
+                value={entry.followup} 
+                onChange={e=>setEntry({...entry, followup:e.target.value})}
+            />
+          </div>
           <div className="col-span-2 text-right"><button onClick={addJournal} className="bg-blue-600 text-white px-6 py-2 rounded shadow hover:bg-blue-700">Simpan Jurnal Tanggal Ini</button></div>
       </div>
       <div className="flex justify-between items-end mt-6"><h3 className="font-bold text-slate-700 flex items-center gap-2"><BookOpen size={18}/> Catatan Jurnal</h3>{filteredJournal.length > 0 && (<button onClick={handleExportJournal} className="bg-green-600 text-white px-3 py-1 rounded text-xs flex items-center gap-2 hover:bg-green-700"><Download size={14}/> Export Jurnal Excel</button>)}</div>
-      {filteredJournal.length === 0 ? (<div className="p-4 bg-yellow-50 text-yellow-700 text-sm border border-yellow-200 rounded mt-2">Belum ada jurnal untuk tanggal dan kelas ini.</div>) : (<div className="overflow-x-auto mt-2"><table className="w-full text-xs text-left border-collapse border border-slate-300"><thead className="bg-slate-100"><tr><th className="border p-2">Jam</th><th className="border p-2">Materi</th><th className="border p-2">Kegiatan</th><th className="border p-2">Refleksi</th><th className="border p-2">Act</th></tr></thead><tbody>{filteredJournal.map(j => (<tr key={j.id} className="bg-white"><td className="border p-2 w-16">{j.time}</td><td className="border p-2">{j.scope}</td><td className="border p-2">{j.activity}</td><td className="border p-2">{j.reflection}</td><td className="border p-2 text-red-500 cursor-pointer w-8" onClick={()=>setJournalData(journalData.filter(x=>x.id!==j.id))}><Trash2 size={14}/></td></tr>))}</tbody></table></div>)}
+      {filteredJournal.length === 0 ? (<div className="p-4 bg-yellow-50 text-yellow-700 text-sm border border-yellow-200 rounded mt-2">Belum ada jurnal untuk tanggal dan kelas ini.</div>) : (
+        <div className="overflow-x-auto mt-2">
+            <table className="w-full text-xs text-left border-collapse border border-slate-300">
+                <thead className="bg-slate-100"><tr><th className="border p-2">Jam</th><th className="border p-2">Materi</th><th className="border p-2">Kegiatan</th><th className="border p-2">Refleksi</th><th className="border p-2">Act</th></tr></thead>
+                <tbody>
+                    {filteredJournal.map(j => (
+                        <tr key={j.id} className="bg-white">
+                            <td className="border p-2 w-16 align-top">{j.time}</td>
+                            <td className="border p-2 align-top">{j.scope}</td>
+                            <td className="border p-2 align-top whitespace-pre-wrap">{j.activity}</td>
+                            <td className="border p-2 align-top whitespace-pre-wrap">{j.reflection}</td>
+                            <td className="border p-2 text-red-500 cursor-pointer w-8 align-top" onClick={()=>setJournalData(journalData.filter(x=>x.id!==j.id))}><Trash2 size={14}/></td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+      )}
     </div>
   );
 };
@@ -329,17 +436,23 @@ const ReportSection = ({ identity, selectedClass, students, selectedDate }) => {
     const handleExportReport = () => {
         if (typeof XLSX === 'undefined') { alert("Fitur Excel belum aktif."); return; }
         const dataToExport = students.map((s, idx) => {
-            const grade = calculateFinalGrade(s);
             const stats = getAttendanceStats(s);
+            const formativeScores = Object.values(s.formative || {}).map(v => parseInt(v)||0);
+            const summativeScores = Object.values(s.summative || {}).map(v => parseInt(v)||0);
+            const attitudeScores = Object.values(s.attitude || {}).map(v => parseInt(v)||0);
+            
+            const avgF = formativeScores.length ? (formativeScores.reduce((a,b)=>a+b,0)/formativeScores.length).toFixed(0) : 0;
+            const avgS = summativeScores.length ? (summativeScores.reduce((a,b)=>a+b,0)/summativeScores.length).toFixed(0) : 0;
+            const avgA = attitudeScores.length ? (attitudeScores.reduce((a,b)=>a+b,0)/attitudeScores.length).toFixed(0) : 0;
+            
+            const grade = calculateFinalGrade(s);
             let pred = 'D'; if(grade.finalScore >= 90) pred = 'A'; else if(grade.finalScore >= 80) pred = 'B'; else if(grade.finalScore >= 70) pred = 'C';
             
             return { 
                 No: idx + 1, NISN: s.nisn, Nama: s.name, 
                 Hadir: stats.h, Sakit: stats.s, Izin: stats.i, Alpha: stats.a,
-                'Rata Formatif': grade.avgFormative, 'Rata Sumatif': grade.avgSummative, 
-                'Nilai Sikap': grade.avgAttitude, 'Nilai Hadir': grade.attendanceScore.toFixed(0),
-                'Nilai Akhir': grade.finalScore, Predikat: pred, 
-                Keterangan: grade.finalScore >= 75 ? 'Tuntas' : 'Belum Tuntas' 
+                'Rata Formatif': avgF, 'Rata Sumatif': avgS, 'Nilai Sikap': avgA, 
+                'Nilai Akhir': grade.finalScore, Predikat: pred, Keterangan: grade.finalScore >= 75 ? 'Tuntas' : 'Belum Tuntas' 
             };
         });
         const ws = XLSX.utils.json_to_sheet(dataToExport);
@@ -360,7 +473,7 @@ const ReportSection = ({ identity, selectedClass, students, selectedDate }) => {
             let pred = 'D'; if(grade.finalScore >= 90) pred = 'A'; else if(grade.finalScore >= 80) pred = 'B'; else if(grade.finalScore >= 70) pred = 'C';
             tableHTML += `<tr><td style="text-align:center">${idx+1}</td><td>${s.nisn}</td><td>${s.name}</td><td style="text-align:center">${stats.h}</td><td style="text-align:center">${stats.s}</td><td style="text-align:center">${stats.i}</td><td style="text-align:center">${stats.a}</td><td style="text-align:center">${grade.avgFormative}</td><td style="text-align:center">${grade.avgSummative}</td><td style="text-align:center">${grade.avgAttitude}</td><td style="text-align:center">${grade.attendanceScore.toFixed(0)}</td><td style="text-align:center"><b>${grade.finalScore}</b></td><td style="text-align:center">${pred}</td><td style="text-align:center">${grade.finalScore >= 75 ? 'Tuntas' : 'Belum'}</td></tr>`;
         });
-        tableHTML += `</tbody></table><br/><br/><table style="border:none; width:100%;"><tr style="border:none;"><td style="border:none; text-align:center;">Mengetahui,<br/>Kepala Sekolah<br/><br/><br/><u>${identity.principalName || '___________________'}</u></td><td style="border:none;"></td><td style="border:none; text-align:center;">${formatDateIndo(selectedDate)}<br/>Guru Mapel<br/><br/><br/><u>${identity.teacherName}</u><br/>NIP. ${identity.nip}</td></tr></table>`;
+        tableHTML += `</tbody></table><br/><br/><table style="border:none; width:100%;"><tr style="border:none;"><td style="border:none; text-align:center;">Mengetahui,<br/>Kepala Sekolah<br/><br/><br/><u>${identity.principalName || '___________________'}</u><br/>NIP. ${identity.principalNip || '.........................'}</td><td style="border:none;"></td><td style="border:none; text-align:center;">${formatDateIndo(selectedDate)}<br/>Guru Mapel<br/><br/><br/><u>${identity.teacherName}</u><br/>NIP. ${identity.nip}</td></tr></table>`;
         const source = 'data:application/vnd.ms-word;charset=utf-8,' + encodeURIComponent(header + tableHTML + "</body></html>");
         const fileDownload = document.createElement("a");
         document.body.appendChild(fileDownload);
@@ -377,8 +490,8 @@ const ReportSection = ({ identity, selectedClass, students, selectedDate }) => {
                 <div className="flex gap-2"><button onClick={handleExportWord} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"><FileText size={16}/> Word</button><button onClick={handleExportReport} className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"><FileSpreadsheet size={16}/> Excel</button><button onClick={()=>window.print()} className="flex items-center gap-2 bg-slate-800 text-white px-4 py-2 rounded hover:bg-slate-900"><Printer size={16}/> Cetak</button></div>
             </div>
             <div className="hidden print:block text-center mb-6"><h1 className="text-xl font-bold">REKAPITULASI NILAI RAPOR</h1><p>Tahun Pelajaran {identity.academicYear} - Semester {identity.semester}</p><p>Kelas: {selectedClass}</p></div>
-            <div className="overflow-x-auto bg-white border rounded shadow-sm"><table className="w-full text-sm border-collapse border border-slate-300"><thead className="bg-slate-800 text-white print:bg-white print:text-black"><tr><th className="border p-2">No</th><th className="border p-2 text-left">Nama Siswa</th><th className="border p-2 w-8 bg-blue-900">H</th><th className="border p-2 w-8 bg-yellow-600">S</th><th className="border p-2 w-8 bg-yellow-600">I</th><th className="border p-2 w-8 bg-red-600">A</th><th className="border p-2 w-16">R. Form</th><th className="border p-2 w-16">R. Sum</th><th className="border p-2 w-16 bg-green-700">N. Sikap</th><th className="border p-2 w-16 bg-blue-700">N. Hadir</th><th className="border p-2 w-16 font-bold bg-slate-100 text-black">NA</th><th className="border p-2 w-16">Pred</th><th className="border p-2 w-20">Ket</th></tr></thead><tbody>{students.map((s, idx) => { const stats = getAttendanceStats(s); const grade = calculateFinalGrade(s); let pred = 'D'; if(grade.finalScore >= 90) pred = 'A'; else if(grade.finalScore >= 80) pred = 'B'; else if(grade.finalScore >= 70) pred = 'C'; return (<tr key={s.id} className="print:border-black"><td className="border p-2 text-center">{idx+1}</td><td className="border p-2 font-medium">{s.name}</td><td className="border p-2 text-center bg-blue-50">{stats.h}</td><td className="border p-2 text-center">{stats.s}</td><td className="border p-2 text-center">{stats.i}</td><td className="border p-2 text-center">{stats.a}</td><td className="border p-2 text-center">{grade.avgFormative}</td><td className="border p-2 text-center">{grade.avgSummative}</td><td className="border p-2 text-center font-bold text-green-700">{grade.avgAttitude}</td><td className="border p-2 text-center font-bold text-blue-700">{grade.attendanceScore.toFixed(0)}</td><td className="border p-2 text-center font-bold bg-slate-100">{grade.finalScore}</td><td className="border p-2 text-center font-bold">{pred}</td><td className="border p-2 text-center text-xs">{grade.finalScore >= 75 ? <span className="text-green-600">Tuntas</span> : <span className="text-red-600">Belum</span>}</td></tr>)})}</tbody></table></div>
-            <div className="grid grid-cols-3 mt-12 page-break-inside-avoid text-sm"><div className="text-center"><p>Mengetahui,</p><p className="mb-16">Kepala Sekolah</p><p className="underline font-bold">{identity.principalName || '___________________'}</p></div><div></div><div className="text-center"><p>Tanggal Cetak: {formatDateIndo(selectedDate)}</p><p>Guru Mata Pelajaran</p><p className="mb-16 font-bold underline">{identity.teacherName}</p><p>NIP. {identity.nip}</p></div></div>
+            <div className="overflow-x-auto bg-white border rounded shadow-sm print:overflow-visible print:shadow-none print:border-none"><table className="w-full text-sm border-collapse border border-slate-300"><thead className="bg-slate-800 text-white print:bg-white print:text-black"><tr><th className="border p-2">No</th><th className="border p-2 text-left">NISN</th><th className="border p-2 text-left">Nama Siswa</th><th className="border p-2 w-8 bg-blue-900">H</th><th className="border p-2 w-8 bg-yellow-600">S</th><th className="border p-2 w-8 bg-yellow-600">I</th><th className="border p-2 w-8 bg-red-600">A</th><th className="border p-2 w-16">R. Form</th><th className="border p-2 w-16">R. Sum</th><th className="border p-2 w-16 bg-green-700">N. Sikap</th><th className="border p-2 w-16 bg-blue-700">N. Hadir</th><th className="border p-2 w-16 font-bold bg-slate-100 text-black">NA</th><th className="border p-2 w-16">Pred</th><th className="border p-2 w-20">Ket</th></tr></thead><tbody>{students.map((s, idx) => { const stats = getAttendanceStats(s); const grade = calculateFinalGrade(s); let pred = 'D'; if(grade.finalScore >= 90) pred = 'A'; else if(grade.finalScore >= 80) pred = 'B'; else if(grade.finalScore >= 70) pred = 'C'; return (<tr key={s.id} className="print:border-black"><td className="border p-2 text-center">{idx+1}</td><td className="border p-2 font-medium">{s.name}</td><td className="border p-2 text-center bg-blue-50">{stats.h}</td><td className="border p-2 text-center">{stats.s}</td><td className="border p-2 text-center">{stats.i}</td><td className="border p-2 text-center">{stats.a}</td><td className="border p-2 text-center">{grade.avgFormative}</td><td className="border p-2 text-center">{grade.avgSummative}</td><td className="border p-2 text-center font-bold text-green-700">{grade.avgAttitude}</td><td className="border p-2 text-center font-bold text-blue-700">{grade.attendanceScore.toFixed(0)}</td><td className="border p-2 text-center font-bold bg-slate-100">{grade.finalScore}</td><td className="border p-2 text-center font-bold">{pred}</td><td className="border p-2 text-center text-xs">{grade.finalScore >= 75 ? <span className="text-green-600">Tuntas</span> : <span className="text-red-600">Belum</span>}</td></tr>)})}</tbody></table></div>
+            <div className="grid grid-cols-3 mt-12 page-break-inside-avoid text-sm"><div className="text-center"><p>Mengetahui,</p><p className="mb-16">Kepala Sekolah</p><p className="underline font-bold">{identity.principalName || '___________________'}</p><p>NIP. {identity.principalNip || '.........................'}</p></div><div></div><div className="text-center"><p>Tanggal Cetak: {formatDateIndo(selectedDate)}</p><p>Guru Mata Pelajaran</p><p className="mb-16 font-bold underline">{identity.teacherName}</p><p>NIP. {identity.nip}</p></div></div>
         </div>
     )
 };
@@ -405,7 +518,7 @@ const App = () => {
   const updateCurrentStudents = (newList) => selectedClass && setStudentsData({ ...studentsData, [selectedClass]: newList });
 
   return (
-    <div className="flex h-screen bg-slate-100 font-sans overflow-hidden">
+    <div className="flex h-screen bg-slate-100 font-sans overflow-hidden print:h-auto print:overflow-visible print:static">
       <aside className={`bg-slate-900 text-white flex flex-col transition-all duration-300 ${sidebarOpen ? 'w-64' : 'w-20'} print:hidden`}>
         <div className="p-4 border-b border-slate-700 flex items-center justify-between">{sidebarOpen && <h1 className="font-bold text-lg tracking-wider">GURU<span className="text-blue-400">APP</span></h1>}<button onClick={()=>setSidebarOpen(!sidebarOpen)} className="p-1 hover:bg-slate-800 rounded"><Menu/></button></div>
         <nav className="flex-1 overflow-y-auto py-4">
@@ -421,14 +534,14 @@ const App = () => {
           <NavItem icon={<BarChart2/>} label="Nilai Rapor" active={activeTab==='report'} onClick={()=>setActiveTab('report')} open={sidebarOpen}/>
         </nav>
       </aside>
-      <main className="flex-1 flex flex-col overflow-hidden">
+      <main className="flex-1 flex flex-col overflow-hidden print:h-auto print:overflow-visible print:static print:block">
         <header className="bg-white shadow-sm border-b p-4 flex flex-col md:flex-row justify-between items-center z-10 print:hidden gap-4">
             <div><h2 className="text-xl font-bold text-slate-800 uppercase">{identity.subject || 'Mata Pelajaran'}</h2><p className="text-xs text-slate-500">{identity.teacherName}</p></div>
             <div className="flex flex-wrap items-center gap-4"><div className="flex items-center gap-2 bg-yellow-50 px-3 py-1 rounded border border-yellow-200"><CalendarDays size={18} className="text-yellow-700"/><div className="flex flex-col"><span className="text-[10px] text-yellow-800 font-bold uppercase">Tanggal Aktif</span><input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="bg-transparent text-sm font-bold text-slate-700 outline-none cursor-pointer"/></div></div><div className="relative"><select className="appearance-none bg-blue-600 text-white font-bold py-2 pl-4 pr-10 rounded-lg cursor-pointer focus:outline-none hover:bg-blue-700" value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)}>{classList.length === 0 && <option value="">(Buat Kelas Dulu)</option>}{classList.map(c => <option key={c} value={c}>{c}</option>)}</select><ChevronDown className="absolute right-3 top-3 text-white pointer-events-none" size={16}/></div></div>
         </header>
-        <div className="flex-1 overflow-auto p-6 md:p-8 print:p-0 print:overflow-visible">
+        <div className="flex-1 overflow-auto p-6 md:p-8 print:p-0 print:overflow-visible print:h-auto">
             {activeTab === 'identity' && <IdentitySection identity={identity} setIdentity={setIdentity} classList={classList} setClassList={setClassList} selectedClass={selectedClass} setSelectedClass={setSelectedClass}/>}
-            {activeTab === 'attendance' && <AttendanceSection selectedClass={selectedClass} students={getCurrentStudents()} onUpdateStudents={updateCurrentStudents} selectedDate={selectedDate}/>}
+            {activeTab === 'attendance' && <AttendanceSection selectedClass={selectedClass} students={getCurrentStudents()} onUpdateStudents={updateCurrentStudents} selectedDate={selectedDate} identity={identity}/>}
             {activeTab === 'curriculum' && <CurriculumSection identity={identity} curriculumData={curriculumData} setCurriculumData={setCurriculumData}/>}
             {activeTab === 'journal' && <JournalSection selectedClass={selectedClass} curriculumData={curriculumData} journalData={journalData} setJournalData={setJournalData} selectedDate={selectedDate}/>}
             {activeTab === 'formative' && <AssessmentSection type="formative" selectedClass={selectedClass} students={getCurrentStudents()} onUpdateStudents={updateCurrentStudents}/>}
