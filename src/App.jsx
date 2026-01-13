@@ -72,13 +72,14 @@ const KopSurat = ({ identity }) => (
     </div>
     <div className="flex-1 text-center">
         <h3 className="text-xl font-bold uppercase tracking-wide m-0">PEMERINTAH PROVINSI</h3>
-        <h2 className="text-3xl font-extrabold uppercase m-0 tracking-wider">{identity.schoolName || 'NAMA SEKOLAH'}</h2>
+        {/* Menggunakan text-2xl agar nama panjang muat */}
+        <h2 className="text-2xl md:text-3xl font-extrabold uppercase m-0 tracking-wider leading-tight">{identity.schoolName || 'NAMA SEKOLAH'}</h2>
         <p className="text-sm italic mt-1">{identity.schoolAddress || 'Alamat Sekolah Belum Diisi'}</p>
     </div>
   </div>
 );
 
-// --- COMPONENT: LANDING PAGE ---
+// --- COMPONENT: LANDING PAGE (UPDATE: TEXTAREA UNTUK NAMA PANJANG) ---
 const LandingPage = ({ onStart, identity, setIdentity }) => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-900 to-slate-900 flex flex-col items-center justify-center text-white p-4 relative overflow-hidden">
@@ -88,7 +89,7 @@ const LandingPage = ({ onStart, identity, setIdentity }) => {
         <div className="absolute bottom-0 right-0 w-96 h-96 bg-indigo-500 rounded-full blur-3xl"></div>
       </div>
 
-      <div className="bg-white/10 backdrop-blur-md border border-white/20 p-8 md:p-12 rounded-2xl shadow-2xl flex flex-col items-center max-w-lg w-full z-10 animate-fadeIn">
+      <div className="bg-white/10 backdrop-blur-md border border-white/20 p-8 md:p-12 rounded-2xl shadow-2xl flex flex-col items-center max-w-2xl w-full z-10 animate-fadeIn">
         
         {/* Logo Container */}
         <div className="w-32 h-32 bg-white rounded-full flex items-center justify-center mb-6 shadow-lg border-4 border-blue-200">
@@ -104,13 +105,14 @@ const LandingPage = ({ onStart, identity, setIdentity }) => {
 
         <h3 className="text-blue-200 font-medium tracking-widest text-sm uppercase mb-2">Sistem Administrasi Guru</h3>
         
-        {/* Editable School Name on Landing */}
-        <input 
-            type="text" 
+        {/* UPDATE: Menggunakan Textarea agar Nama Sekolah Panjang bisa turun baris */}
+        <textarea 
             value={identity.schoolName}
             onChange={(e) => setIdentity({...identity, schoolName: e.target.value.toUpperCase()})}
-            className="bg-transparent border-b border-white/30 text-center text-3xl md:text-4xl font-bold text-white placeholder-white/50 focus:outline-none focus:border-yellow-400 w-full mb-8 pb-2"
-            placeholder="NAMA SEKOLAH"
+            className="bg-transparent border-b border-white/30 text-center text-2xl md:text-4xl font-bold text-white placeholder-white/50 focus:outline-none focus:border-yellow-400 w-full mb-8 pb-2 resize-none overflow-hidden"
+            placeholder="KETIK NAMA SEKOLAH DISINI"
+            rows={2} // Memberikan ruang untuk 2 baris
+            style={{ lineHeight: '1.2' }}
         />
 
         <button 
@@ -190,7 +192,7 @@ const AttendanceSection = ({ selectedClass, students, onUpdateStudents, selected
 
   // EXCEL IMPORTS/EXPORTS
   const handleDownloadTemplate = () => {
-    if (typeof XLSX === 'undefined') { alert("Fitur Excel belum aktif."); return; }
+    if (typeof XLSX === 'undefined') { alert("Fitur Excel butuh 'npm install xlsx' di komputer lokal."); return; }
     const ws = XLSX.utils.json_to_sheet([{ No: 1, NISN: "123", NIM: "101", Nama: "Siswa A", Gender: "L" }]);
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Siswa");
     XLSX.writeFile(wb, "Template_Siswa.xlsx");
