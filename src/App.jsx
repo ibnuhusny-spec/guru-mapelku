@@ -11,8 +11,8 @@ import {
 // --- INITIAL STATE ---
 
 const initialIdentity = {
-  schoolName: 'SMA NEGERI CONTOH', // Default
-  schoolAddress: 'Jl. Pendidikan No. 1, Kota Belajar', // Tambahan Alamat untuk KOP
+  schoolName: 'SMA NEGERI CONTOH', 
+  schoolAddress: 'Jl. Pendidikan No. 1, Kota Belajar',
   principalName: '', 
   principalNip: '',
   subject: '',
@@ -22,14 +22,15 @@ const initialIdentity = {
   academicYear: '2025/2026',
 };
 
-// --- HELPER FUNCTIONS ---
+// --- HELPER FUNCTIONS (UPDATED) ---
 
+// Helper Baru: Menghitung statistik murni dari history tanggal, bukan input manual
 const getAttendanceStats = (student) => {
-    const historyValues = Object.values(student.attendanceHistory || {});
-    const h = historyValues.filter(val => val === 'H').length;
-    const s = parseInt(student.recap?.s || 0);
-    const i = parseInt(student.recap?.i || 0);
-    const a = parseInt(student.recap?.a || 0);
+    const history = Object.values(student.attendanceHistory || {});
+    const h = history.filter(s => s === 'H').length;
+    const s = history.filter(s => s === 'S').length;
+    const i = history.filter(s => s === 'I').length;
+    const a = history.filter(s => s === 'A').length;
     return { h, s, i, a, total: h + s + i + a };
 };
 
@@ -44,7 +45,9 @@ const calculateFinalGrade = (student) => {
   const avgAttitude = attitudeScores.length ? attitudeScores.reduce((a,b)=>a+b,0)/attitudeScores.length : 0;
 
   const { h, total } = getAttendanceStats(student);
-  const attendanceScore = total > 0 ? (h / total) * 100 : 100;
+  
+  // LOGIKA BARU: Jika total pertemuan 0, nilai kehadiran 0 (bukan 100)
+  const attendanceScore = total > 0 ? (h / total) * 100 : 0;
 
   const finalScore = (avgFormative * 0.35) + (avgSummative * 0.35) + (avgAttitude * 0.20) + (attendanceScore * 0.10);
 
@@ -63,70 +66,37 @@ const formatDateIndo = (dateString) => {
   return new Date(dateString).toLocaleDateString('id-ID', options);
 };
 
-// --- COMPONENT: KOP SURAT (Untuk Tampilan Cetak/Web) ---
+// --- COMPONENT: KOP SURAT ---
 const KopSurat = ({ identity }) => (
   <div className="hidden print:flex flex-row items-center border-b-4 border-double border-black pb-4 mb-6">
-    {/* Logo Sekolah (Pastikan file logo.png ada di folder public/ root) */}
     <div className="w-24 h-24 flex items-center justify-center mr-4">
        <img src="/logo.png" alt="Logo" className="max-w-full max-h-full object-contain" onError={(e) => e.target.style.display = 'none'} />
     </div>
     <div className="flex-1 text-center">
         <h3 className="text-xl font-bold uppercase tracking-wide m-0">PEMERINTAH PROVINSI</h3>
-        {/* Menggunakan text-2xl agar nama panjang muat */}
         <h2 className="text-2xl md:text-3xl font-extrabold uppercase m-0 tracking-wider leading-tight">{identity.schoolName || 'NAMA SEKOLAH'}</h2>
         <p className="text-sm italic mt-1">{identity.schoolAddress || 'Alamat Sekolah Belum Diisi'}</p>
     </div>
   </div>
 );
 
-// --- COMPONENT: LANDING PAGE (UPDATE: TEXTAREA UNTUK NAMA PANJANG) ---
+// --- COMPONENT: LANDING PAGE ---
 const LandingPage = ({ onStart, identity, setIdentity }) => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-900 to-slate-900 flex flex-col items-center justify-center text-white p-4 relative overflow-hidden">
-      {/* Background decoration */}
       <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
         <div className="absolute -top-24 -left-24 w-96 h-96 bg-blue-500 rounded-full blur-3xl"></div>
         <div className="absolute bottom-0 right-0 w-96 h-96 bg-indigo-500 rounded-full blur-3xl"></div>
       </div>
-
       <div className="bg-white/10 backdrop-blur-md border border-white/20 p-8 md:p-12 rounded-2xl shadow-2xl flex flex-col items-center max-w-2xl w-full z-10 animate-fadeIn">
-        
-        {/* Logo Container */}
         <div className="w-32 h-32 bg-white rounded-full flex items-center justify-center mb-6 shadow-lg border-4 border-blue-200">
-            {/* Menggunakan logo.png, fallback ke Icon jika tidak ada */}
-            <img 
-                src="/logo.png" 
-                alt="Logo Sekolah" 
-                className="w-24 h-24 object-contain"
-                onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='block'; }}
-            />
+            <img src="/logo.png" alt="Logo Sekolah" className="w-24 h-24 object-contain" onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='block'; }} />
             <School size={48} className="text-blue-900 hidden" /> 
         </div>
-
         <h3 className="text-blue-200 font-medium tracking-widest text-sm uppercase mb-2">Sistem Administrasi Guru</h3>
-        
-        {/* UPDATE: Menggunakan Textarea agar Nama Sekolah Panjang bisa turun baris */}
-        <textarea 
-            value={identity.schoolName}
-            onChange={(e) => setIdentity({...identity, schoolName: e.target.value.toUpperCase()})}
-            className="bg-transparent border-b border-white/30 text-center text-2xl md:text-4xl font-bold text-white placeholder-white/50 focus:outline-none focus:border-yellow-400 w-full mb-8 pb-2 resize-none overflow-hidden"
-            placeholder="KETIK NAMA SEKOLAH DISINI"
-            rows={2} // Memberikan ruang untuk 2 baris
-            style={{ lineHeight: '1.2' }}
-        />
-
-        <button 
-            onClick={onStart}
-            className="group bg-yellow-500 hover:bg-yellow-400 text-blue-900 font-bold py-4 px-10 rounded-full shadow-lg hover:shadow-yellow-500/50 transition-all duration-300 flex items-center gap-3 text-lg"
-        >
-            Masuk Aplikasi <ArrowRight className="group-hover:translate-x-1 transition-transform"/>
-        </button>
-
-        <div className="mt-12 text-center opacity-60 text-xs">
-            <p>Dikembangkan oleh:</p>
-            <p className="font-semibold text-sm tracking-wide mt-1">IBNU HUSNY</p>
-            <p>Versi 2.5 (Daily & Export)</p>
-        </div>
+        <textarea value={identity.schoolName} onChange={(e) => setIdentity({...identity, schoolName: e.target.value.toUpperCase()})} className="bg-transparent border-b border-white/30 text-center text-2xl md:text-4xl font-bold text-white placeholder-white/50 focus:outline-none focus:border-yellow-400 w-full mb-8 pb-2 resize-none overflow-hidden" placeholder="KETIK NAMA SEKOLAH DISINI" rows={2} style={{ lineHeight: '1.2' }} />
+        <button onClick={onStart} className="group bg-yellow-500 hover:bg-yellow-400 text-blue-900 font-bold py-4 px-10 rounded-full shadow-lg hover:shadow-yellow-500/50 transition-all duration-300 flex items-center gap-3 text-lg">Masuk Aplikasi <ArrowRight className="group-hover:translate-x-1 transition-transform"/></button>
+        <div className="mt-12 text-center opacity-60 text-xs"><p>Dikembangkan oleh:</p><p className="font-semibold text-sm tracking-wide mt-1">IBNU HUSNY</p><p>Versi 3.0 (Smart Attendance)</p></div>
       </div>
     </div>
   );
@@ -136,38 +106,22 @@ const LandingPage = ({ onStart, identity, setIdentity }) => {
 
 const IdentitySection = ({ identity, setIdentity, classList, setClassList, selectedClass, setSelectedClass }) => {
   const [newClassInput, setNewClassInput] = useState('');
-
   const addClass = () => { if (newClassInput && !classList.includes(newClassInput)) { setClassList([...classList, newClassInput]); if (!selectedClass) setSelectedClass(newClassInput); setNewClassInput(''); }};
   const removeClass = (cls) => { if(window.confirm(`Hapus kelas ${cls}?`)) { const newList = classList.filter(c => c !== cls); setClassList(newList); if (selectedClass === cls) setSelectedClass(newList[0] || ''); }};
   const handleResetAll = () => { if(window.confirm("RESET SEMUA DATA?")) { localStorage.clear(); window.location.reload(); }};
 
   return (
     <div className="space-y-6 animate-fadeIn">
-      <div className="flex justify-between items-center border-b pb-2">
-        <h2 className="text-2xl font-bold text-slate-800">1. Identitas & Pengaturan</h2>
-        <button onClick={handleResetAll} className="text-xs text-red-500 border border-red-200 px-2 py-1 rounded hover:bg-red-50">Reset Data</button>
-      </div>
+      <div className="flex justify-between items-center border-b pb-2"><h2 className="text-2xl font-bold text-slate-800">1. Identitas & Pengaturan</h2><button onClick={handleResetAll} className="text-xs text-red-500 border border-red-200 px-2 py-1 rounded hover:bg-red-50">Reset Data</button></div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-white p-6 rounded-lg shadow-sm border space-y-4">
           <h3 className="font-bold text-blue-600 flex items-center gap-2"><User size={18}/> Data Administrasi</h3>
           <div><label className="text-sm text-slate-500">Nama Sekolah</label><input type="text" className="w-full p-2 border rounded" value={identity.schoolName} onChange={e=>setIdentity({...identity, schoolName: e.target.value})} /></div>
-          <div><label className="text-sm text-slate-500">Alamat Sekolah (Untuk KOP)</label><input type="text" className="w-full p-2 border rounded" placeholder="Jl. Contoh No. 1..." value={identity.schoolAddress} onChange={e=>setIdentity({...identity, schoolAddress: e.target.value})} /></div>
-          
-          <div className="flex gap-2">
-            <div className="flex-1"><label className="text-sm text-slate-500">Kepala Sekolah</label><input type="text" className="w-full p-2 border rounded" value={identity.principalName} onChange={e=>setIdentity({...identity, principalName: e.target.value})} /></div>
-            <div className="w-1/3"><label className="text-sm text-slate-500">NIP KS</label><input type="text" className="w-full p-2 border rounded" value={identity.principalNip} onChange={e=>setIdentity({...identity, principalNip: e.target.value})} /></div>
-          </div>
-
+          <div><label className="text-sm text-slate-500">Alamat Sekolah</label><input type="text" className="w-full p-2 border rounded" value={identity.schoolAddress} onChange={e=>setIdentity({...identity, schoolAddress: e.target.value})} /></div>
+          <div className="flex gap-2"><div className="flex-1"><label className="text-sm text-slate-500">Kepala Sekolah</label><input type="text" className="w-full p-2 border rounded" value={identity.principalName} onChange={e=>setIdentity({...identity, principalName: e.target.value})} /></div><div className="w-1/3"><label className="text-sm text-slate-500">NIP KS</label><input type="text" className="w-full p-2 border rounded" value={identity.principalNip} onChange={e=>setIdentity({...identity, principalNip: e.target.value})} /></div></div>
           <div><label className="text-sm text-slate-500">Mata Pelajaran</label><input type="text" className="w-full p-2 border rounded" value={identity.subject} onChange={e=>setIdentity({...identity, subject: e.target.value})} /></div>
-          <div className="flex gap-2">
-             <div className="flex-1"><label className="text-sm text-slate-500">Guru Mapel</label><input type="text" className="w-full p-2 border rounded" value={identity.teacherName} onChange={e=>setIdentity({...identity, teacherName: e.target.value})} /></div>
-             <div className="w-1/3"><label className="text-sm text-slate-500">NIP Guru</label><input type="text" className="w-full p-2 border rounded" value={identity.nip} onChange={e=>setIdentity({...identity, nip: e.target.value})} /></div>
-          </div>
-          
-          <div className="grid grid-cols-2 gap-2">
-            <div><label className="text-sm text-slate-500">Semester</label><select className="w-full p-2 border rounded" value={identity.semester} onChange={e=>setIdentity({...identity, semester: e.target.value})}><option>Ganjil</option><option>Genap</option></select></div>
-            <div><label className="text-sm text-slate-500">Thn. Ajar</label><input type="text" className="w-full p-2 border rounded" value={identity.academicYear} onChange={e=>setIdentity({...identity, academicYear: e.target.value})} /></div>
-          </div>
+          <div className="flex gap-2"><div className="flex-1"><label className="text-sm text-slate-500">Guru Mapel</label><input type="text" className="w-full p-2 border rounded" value={identity.teacherName} onChange={e=>setIdentity({...identity, teacherName: e.target.value})} /></div><div className="w-1/3"><label className="text-sm text-slate-500">NIP Guru</label><input type="text" className="w-full p-2 border rounded" value={identity.nip} onChange={e=>setIdentity({...identity, nip: e.target.value})} /></div></div>
+          <div className="grid grid-cols-2 gap-2"><div><label className="text-sm text-slate-500">Semester</label><select className="w-full p-2 border rounded" value={identity.semester} onChange={e=>setIdentity({...identity, semester: e.target.value})}><option>Ganjil</option><option>Genap</option></select></div><div><label className="text-sm text-slate-500">Thn. Ajar</label><input type="text" className="w-full p-2 border rounded" value={identity.academicYear} onChange={e=>setIdentity({...identity, academicYear: e.target.value})} /></div></div>
         </div>
         <div className="bg-white p-6 rounded-lg shadow-sm border space-y-4">
           <h3 className="font-bold text-green-600 flex items-center gap-2"><Users size={18}/> Manajemen Kelas</h3>
@@ -185,10 +139,34 @@ const AttendanceSection = ({ selectedClass, students, onUpdateStudents, selected
 
   if (!selectedClass) return <div className="p-10 text-center text-slate-500">Pilih Kelas Terlebih Dahulu.</div>;
 
-  const addStudent = () => { if(newStudent.name){ onUpdateStudents([...students, { ...newStudent, id: Date.now(), attendanceHistory: {}, recap: {s:0,i:0,a:0} }]); setNewStudent({name:'',nim:'',nisn:'',gender:'L'}); }};
-  const updateDaily = (id, status) => onUpdateStudents(students.map(s => s.id === id ? { ...s, attendanceHistory: { ...s.attendanceHistory, [selectedDate]: status } } : s));
-  const updateRecap = (id, f, v) => onUpdateStudents(students.map(s => s.id === id ? { ...s, recap: { ...s.recap, [f]: v } } : s));
-  const markAll = () => { if(confirm('Hadirkan semua?')) onUpdateStudents(students.map(s => ({ ...s, attendanceHistory: { ...s.attendanceHistory, [selectedDate]: 'H' } }))); };
+  const addStudent = () => { if(newStudent.name){ onUpdateStudents([...students, { ...newStudent, id: Date.now(), attendanceHistory: {} }]); setNewStudent({name:'',nim:'',nisn:'',gender:'L'}); }};
+  
+  // UPDATE STATUS HARIAN (Hanya 1 status per hari)
+  const updateDailyStatus = (id, status) => {
+    onUpdateStudents(students.map(s => {
+        if(s.id === id) {
+            // Jika diklik status yang sama, maka uncheck (hapus), jika beda, set baru
+            const currentStatus = s.attendanceHistory?.[selectedDate];
+            const newStatus = currentStatus === status ? undefined : status;
+            
+            const newHistory = { ...s.attendanceHistory };
+            if (newStatus) newHistory[selectedDate] = newStatus;
+            else delete newHistory[selectedDate];
+
+            return { ...s, attendanceHistory: newHistory };
+        }
+        return s;
+    }));
+  };
+
+  const markAllPresent = () => {
+    if (confirm(`Tandai semua ${students.length} siswa sebagai HADIR pada tanggal ${selectedDate}?`)) {
+        onUpdateStudents(students.map(s => ({ 
+            ...s, 
+            attendanceHistory: { ...s.attendanceHistory, [selectedDate]: 'H' } 
+        })));
+    }
+  };
 
   // EXCEL IMPORTS/EXPORTS
   const handleDownloadTemplate = () => {
@@ -205,7 +183,7 @@ const AttendanceSection = ({ selectedClass, students, onUpdateStudents, selected
     reader.onload = (evt) => {
       const wb = XLSX.read(evt.target.result, { type: 'binary' });
       const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-      if(confirm(`Import ${data.length} siswa?`)) onUpdateStudents([...students, ...data.map((row, i) => ({ id: Date.now()+i, name: row['Nama']||'NoName', nisn: row['NISN']||'-', nim: row['NIM']||'-', gender: row['Gender']||'L', attendanceHistory: {}, recap: {s:0,i:0,a:0}, formative: {}, summative: {}, attitude: {} }))]);
+      if(confirm(`Import ${data.length} siswa?`)) onUpdateStudents([...students, ...data.map((row, i) => ({ id: Date.now()+i, name: row['Nama']||'NoName', nisn: row['NISN']||'-', nim: row['NIM']||'-', gender: row['Gender']||'L', attendanceHistory: {}, formative: {}, summative: {}, attitude: {} }))]);
     };
     reader.readAsBinaryString(file); e.target.value = null;
   };
@@ -216,65 +194,97 @@ const AttendanceSection = ({ selectedClass, students, onUpdateStudents, selected
     const daysInMonth = new Date(year, month, 0).getDate();
     const monthName = new Date(year, month - 1, 1).toLocaleString('id-ID', { month: 'long' }).toUpperCase();
 
-    // Data KOP untuk Excel
-    const kopRows = [
-        [identity.schoolName.toUpperCase()],
-        [identity.schoolAddress],
-        [`REKAPITULASI KEHADIRAN SISWA - KELAS ${selectedClass}`],
-        [`BULAN: ${monthName} ${year}`],
-        [] // Spasi
-    ];
-
+    const kopRows = [[identity.schoolName.toUpperCase()], [identity.schoolAddress], [`REKAPITULASI KEHADIRAN SISWA - KELAS ${selectedClass}`], [`BULAN: ${monthName} ${year}`], []];
     const headers = ["No", "NISN", "Nama", "L/P"];
     for(let i=1; i<=daysInMonth; i++) headers.push(i);
-    headers.push("H", "S", "I", "A");
+    headers.push("H", "S", "I", "A", "TOTAL");
 
     const dataRows = students.map((s, idx) => {
         const row = [idx + 1, s.nisn, s.name, s.gender];
-        let hCount = 0;
+        let stats = { H:0, S:0, I:0, A:0 };
         for(let i=1; i<=daysInMonth; i++) {
             const d = `${year}-${month}-${String(i).padStart(2,'0')}`;
             const st = s.attendanceHistory?.[d] || '';
             row.push(st);
-            if(st === 'H') hCount++;
+            if(st && stats[st] !== undefined) stats[st]++;
         }
-        row.push(hCount, s.recap?.s||0, s.recap?.i||0, s.recap?.a||0);
+        row.push(stats.H, stats.S, stats.I, stats.A, stats.H+stats.S+stats.I+stats.A);
         return row;
     });
 
-    const footerRows = [
-        [],[],
-        ["Mengetahui,", "", "", "", "", "Tanggal:", formatDateIndo(new Date().toISOString())],
-        ["Kepala Sekolah", "", "", "", "", "Guru Mata Pelajaran"],
-        [],[],[],
-        [identity.principalName, "", "", "", "", identity.teacherName],
-        [`NIP. ${identity.principalNip}`, "", "", "", "", `NIP. ${identity.nip}`]
-    ];
-
+    const footerRows = [[],[], ["Mengetahui,", "", "", "", "", "Tanggal:", formatDateIndo(new Date().toISOString())], ["Kepala Sekolah", "", "", "", "", "Guru Mata Pelajaran"], [],[],[], [identity.principalName, "", "", "", "", identity.teacherName], [`NIP. ${identity.principalNip}`, "", "", "", "", `NIP. ${identity.nip}`]];
     const ws = XLSX.utils.aoa_to_sheet([...kopRows, headers, ...dataRows, ...footerRows]);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Rekap Bulanan");
-    XLSX.writeFile(wb, `Rekap_Absen_${monthName}.xlsx`);
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Rekap Bulanan"); XLSX.writeFile(wb, `Rekap_Absen_${monthName}.xlsx`);
   };
 
   return (
     <div className="space-y-6 animate-fadeIn">
       <div className="flex justify-between items-center border-b pb-2">
          <div><h2 className="text-2xl font-bold text-slate-800">2. Daftar Hadir</h2><p className="text-sm text-blue-600"><Calendar size={14} className="inline"/> {formatDateIndo(selectedDate)}</p></div>
-         <div className="flex gap-2"><button onClick={markAll} className="bg-blue-100 text-blue-700 px-3 py-1 rounded font-bold hover:bg-blue-200 text-sm">Hadir Semua</button></div>
+         <div className="flex gap-2"><button onClick={markAllPresent} className="bg-blue-100 text-blue-700 px-3 py-1 rounded font-bold hover:bg-blue-200 text-sm">Hadir Semua</button></div>
       </div>
+      
+      {/* EXPORT TOOLS */}
       <div className="bg-white p-3 rounded border flex flex-wrap gap-2 items-center text-sm shadow-sm">
         <label className="bg-green-600 text-white px-3 py-1 rounded cursor-pointer flex gap-1"><Upload size={14}/> Import<input type="file" className="hidden" onChange={handleImportExcel}/></label>
         <button onClick={handleDownloadTemplate} className="bg-slate-100 border px-3 py-1 rounded">Template</button>
         <div className="border-l pl-2 flex gap-1 items-center">
             <input type="month" value={exportMonth} onChange={e=>setExportMonth(e.target.value)} className="border rounded px-1"/>
-            <button onClick={handleExportMonthly} className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 flex gap-1"><FileSpreadsheet size={14}/> Export Bulanan</button>
+            <button onClick={handleExportMonthly} className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 flex gap-1"><FileSpreadsheet size={14}/> Rekap Sebulan</button>
         </div>
       </div>
+
       <div className="bg-slate-50 p-2 rounded border flex gap-2 mb-2"><input placeholder="Nama Siswa Baru..." value={newStudent.name} onChange={e=>setNewStudent({...newStudent, name:e.target.value})} className="flex-1 border p-1 rounded"/><button onClick={addStudent}><Plus/></button></div>
-      <div className="overflow-x-auto bg-white border rounded"><table className="w-full text-sm text-left"><thead className="bg-slate-800 text-white"><tr><th className="p-2">No</th><th className="p-2">Nama</th><th className="p-2 text-center bg-blue-700">HADIR</th><th className="p-2 w-8 text-center bg-yellow-600">S</th><th className="p-2 w-8 text-center bg-yellow-600">I</th><th className="p-2 w-8 text-center bg-red-600">A</th><th className="p-2 w-8">Del</th></tr></thead><tbody>
-        {students.map((s,i)=>(<tr key={s.id} className="border-b hover:bg-slate-50"><td className="p-2 text-center">{i+1}</td><td className="p-2 font-medium">{s.name}<br/><span className="text-xs text-gray-400">{s.nisn}</span></td><td className="p-2 text-center border-x"><input type="checkbox" checked={s.attendanceHistory?.[selectedDate]==='H'} onChange={e=>updateDaily(s.id, e.target.checked?'H':null)} className="w-5 h-5"/></td><td className="p-1"><input type="number" value={s.recap?.s||0} onChange={e=>updateRecap(s.id,'s',e.target.value)} className="w-10 text-center"/></td><td className="p-1"><input type="number" value={s.recap?.i||0} onChange={e=>updateRecap(s.id,'i',e.target.value)} className="w-10 text-center"/></td><td className="p-1"><input type="number" value={s.recap?.a||0} onChange={e=>updateRecap(s.id,'a',e.target.value)} className="w-10 text-center"/></td><td className="p-2 text-center text-red-500 cursor-pointer" onClick={()=>onUpdateStudents(students.filter(x=>x.id!==s.id))}><Trash2 size={14}/></td></tr>))}
-      </tbody></table></div>
+      
+      <div className="overflow-x-auto bg-white border rounded">
+        <table className="w-full text-sm text-left">
+          <thead className="bg-slate-800 text-white">
+            <tr>
+              <th className="p-3" rowSpan={2}>No</th>
+              <th className="p-3" rowSpan={2}>Nama Siswa</th>
+              <th className="p-2 text-center border-x bg-blue-900" colSpan={4}>Status Hari Ini ({selectedDate})</th>
+              <th className="p-2 text-center bg-slate-700" colSpan={4}>Total Akumulasi</th>
+              <th className="p-3 w-8" rowSpan={2}>Del</th>
+            </tr>
+            <tr className="text-xs text-center font-bold">
+                <th className="p-2 bg-blue-100 text-blue-900 w-10">H</th>
+                <th className="p-2 bg-yellow-100 text-yellow-800 w-10">S</th>
+                <th className="p-2 bg-yellow-100 text-yellow-800 w-10">I</th>
+                <th className="p-2 bg-red-100 text-red-800 w-10">A</th>
+                <th className="p-2 bg-slate-100 w-8">H</th>
+                <th className="p-2 bg-slate-100 w-8">S</th>
+                <th className="p-2 bg-slate-100 w-8">I</th>
+                <th className="p-2 bg-slate-100 w-8">A</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {students.map((s, idx) => {
+                const statusToday = s.attendanceHistory?.[selectedDate];
+                const stats = getAttendanceStats(s); // Hitung total otomatis
+                return (
+                  <tr key={s.id} className="hover:bg-slate-50">
+                    <td className="p-3 text-center">{idx+1}</td>
+                    <td className="p-3 font-medium">{s.name}<br/><span className="text-xs text-gray-400">{s.nisn}</span></td>
+                    
+                    {/* CHECKBOXES HARI INI (EKSKLUSIF) */}
+                    <td className="p-2 text-center bg-blue-50 border-l"><input type="checkbox" checked={statusToday === 'H'} onChange={() => updateDailyStatus(s.id, 'H')} className="w-5 h-5 accent-blue-600 cursor-pointer"/></td>
+                    <td className="p-2 text-center bg-yellow-50"><input type="checkbox" checked={statusToday === 'S'} onChange={() => updateDailyStatus(s.id, 'S')} className="w-5 h-5 accent-yellow-600 cursor-pointer"/></td>
+                    <td className="p-2 text-center bg-yellow-50"><input type="checkbox" checked={statusToday === 'I'} onChange={() => updateDailyStatus(s.id, 'I')} className="w-5 h-5 accent-yellow-600 cursor-pointer"/></td>
+                    <td className="p-2 text-center bg-red-50 border-r"><input type="checkbox" checked={statusToday === 'A'} onChange={() => updateDailyStatus(s.id, 'A')} className="w-5 h-5 accent-red-600 cursor-pointer"/></td>
+                    
+                    {/* TOTAL STATISTIK (READONLY) */}
+                    <td className="p-2 text-center font-bold text-blue-700">{stats.h}</td>
+                    <td className="p-2 text-center font-medium text-yellow-700">{stats.s}</td>
+                    <td className="p-2 text-center font-medium text-yellow-700">{stats.i}</td>
+                    <td className="p-2 text-center font-bold text-red-600">{stats.a}</td>
+                    
+                    <td className="p-2 text-center text-red-500 cursor-pointer" onClick={()=>onUpdateStudents(students.filter(x=>x.id!==s.id))}><Trash2 size={14}/></td>
+                  </tr>
+                )
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 };
