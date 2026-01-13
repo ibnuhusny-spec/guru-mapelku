@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import * as XLSX from 'xlsx'; // JANGAN LUPA HAPUS TANDA // INI DI VS CODE
+import * as XLSX from 'xlsx'; // UNTUK DI PREVIEW SAYA MATIKAN DULU. DI KOMPUTER, HAPUS TANDA // INI.
 import { 
   User, Users, BookOpen, Calendar, 
   ClipboardList, PenTool, Heart, 
@@ -34,11 +34,11 @@ const getAttendanceStats = (student) => {
 };
 
 const calculateFinalGrade = (student) => {
-  // 1. Rata-rata Formatif (TP1-TP10)
+  // 1. Rata-rata Formatif (TP1-TP10) -> Bobot 35%
   const formativeValues = Object.values(student.formative || {}).map(v => parseInt(v)||0).filter(v => v > 0);
   const avgFormative = formativeValues.length ? formativeValues.reduce((a,b)=>a+b,0)/formativeValues.length : 0;
 
-  // 2. Pecah Sumatif: LM, STS, SAS
+  // 2. Sumatif (LM, STS, SAS) -> Bobot 35%
   const summativeData = student.summative || {};
   
   // A. Rata-rata Lingkup Materi (LM1-LM10)
@@ -53,26 +53,26 @@ const calculateFinalGrade = (student) => {
   const sts = parseInt(summativeData['STS']) || 0;
   const sas = parseInt(summativeData['SAS']) || 0;
 
-  // C. Rata-rata Gabungan Sumatif (Materi + STS + SAS)
-  // Pembagi dinamis: jika ada STS/SAS, sertakan dalam pembagi
-  let sumComponents = [avgLM];
-  if(sts > 0) sumComponents.push(sts);
-  if(sas > 0) sumComponents.push(sas);
+  // C. Rata-rata Gabungan Sumatif (Dinamis)
+  // Jika STS/SAS belum diisi (0), jangan ikut membagi agar nilai tidak anjlok
+  let sumTotal = avgLM;
+  let sumDivider = 1; // Minimal pembagi 1 (untuk LM)
   
-  // Jika belum ada nilai sama sekali, rata-rata 0. Jika ada, rata-rata dari komponen yang ada.
-  // Tapi biasanya STS/SAS wajib pembagi 3 jika kurikulum ketat. Di sini kita buat fleksibel rata-rata komponen terisi.
-  // Atau standard: (AvgLM + STS + SAS) / 3 (anggap 0 jika kosong)
-  const totalSummativeMix = (avgLM + sts + sas) / 3; 
+  if(sts > 0) { sumTotal += sts; sumDivider++; }
+  if(sas > 0) { sumTotal += sas; sumDivider++; }
+  
+  // Jika semua masih 0, hasil 0.
+  const totalSummativeMix = (avgLM === 0 && sts === 0 && sas === 0) ? 0 : (sumTotal / sumDivider);
 
-  // 3. Rata-rata Sikap
+  // 3. Rata-rata Sikap -> Bobot 20%
   const attitudeValues = Object.values(student.attitude || {}).map(v => parseInt(v)||0).filter(v => v > 0);
   const avgAttitude = attitudeValues.length ? attitudeValues.reduce((a,b)=>a+b,0)/attitudeValues.length : 0;
 
-  // 4. Nilai Kehadiran
+  // 4. Nilai Kehadiran -> Bobot 10%
   const { h, total } = getAttendanceStats(student);
   const attendanceScore = total > 0 ? (h / total) * 100 : 0;
 
-  // 5. Nilai Akhir (Bobot: F=35%, S=35%, A=20%, H=10%)
+  // 5. Nilai Akhir (NA)
   const finalScore = (avgFormative * 0.35) + (totalSummativeMix * 0.35) + (avgAttitude * 0.20) + (attendanceScore * 0.10);
 
   return {
@@ -122,7 +122,7 @@ const LandingPage = ({ onStart, identity, setIdentity }) => {
         <h3 className="text-blue-200 font-medium tracking-widest text-sm uppercase mb-2">Sistem Administrasi Guru</h3>
         <textarea value={identity.schoolName} onChange={(e) => setIdentity({...identity, schoolName: e.target.value.toUpperCase()})} className="bg-transparent border-b border-white/30 text-center text-2xl md:text-4xl font-bold text-white placeholder-white/50 focus:outline-none focus:border-yellow-400 w-full mb-8 pb-2 resize-none overflow-hidden" placeholder="KETIK NAMA SEKOLAH DISINI" rows={2} style={{ lineHeight: '1.2' }} />
         <button onClick={onStart} className="group bg-yellow-500 hover:bg-yellow-400 text-blue-900 font-bold py-4 px-10 rounded-full shadow-lg hover:shadow-yellow-500/50 transition-all duration-300 flex items-center gap-3 text-lg">Masuk Aplikasi <ArrowRight className="group-hover:translate-x-1 transition-transform"/></button>
-        <div className="mt-12 text-center opacity-60 text-xs"><p>Dikembangkan oleh:</p><p className="font-semibold text-sm tracking-wide mt-1">IBNU HUSNY</p><p>Versi 3.1 (Fixed Report)</p></div>
+        <div className="mt-12 text-center opacity-60 text-xs"><p>Dikembangkan oleh:</p><p className="font-semibold text-sm tracking-wide mt-1">IBNU HUSNY</p><p>Versi 3.1 (Fixed Logic)</p></div>
       </div>
     </div>
   );
