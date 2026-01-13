@@ -122,7 +122,7 @@ const LandingPage = ({ onStart, identity, setIdentity }) => {
         <h3 className="text-blue-200 font-medium tracking-widest text-sm uppercase mb-2">Sistem Administrasi Guru</h3>
         <textarea value={identity.schoolName} onChange={(e) => setIdentity({...identity, schoolName: e.target.value.toUpperCase()})} className="bg-transparent border-b border-white/30 text-center text-2xl md:text-4xl font-bold text-white placeholder-white/50 focus:outline-none focus:border-yellow-400 w-full mb-8 pb-2 resize-none overflow-hidden" placeholder="KETIK NAMA SEKOLAH DISINI" rows={2} style={{ lineHeight: '1.2' }} />
         <button onClick={onStart} className="group bg-yellow-500 hover:bg-yellow-400 text-blue-900 font-bold py-4 px-10 rounded-full shadow-lg hover:shadow-yellow-500/50 transition-all duration-300 flex items-center gap-3 text-lg">Masuk Aplikasi <ArrowRight className="group-hover:translate-x-1 transition-transform"/></button>
-        <div className="mt-12 text-center opacity-60 text-xs"><p>Dikembangkan oleh:</p><p className="font-semibold text-sm tracking-wide mt-1">IBNU HUSNY</p><p>Versi 4.0 (Multi-Mapel)</p></div>
+        <div className="mt-12 text-center opacity-60 text-xs"><p>Dikembangkan oleh:</p><p className="font-semibold text-sm tracking-wide mt-1">IBNU HUSNY</p><p>Versi 4.1 (Stability Fix)</p></div>
       </div>
     </div>
   );
@@ -138,16 +138,19 @@ const IdentitySection = ({ identity, setIdentity, classList, setClassList, selec
   const removeClass = (cls) => { if(window.confirm(`Hapus kelas ${cls}?`)) { const newList = classList.filter(c => c !== cls); setClassList(newList); if (selectedClass === cls) setSelectedClass(newList[0] || ''); }};
   
   const addSubject = () => {
-    if (newSubjectInput && !identity.subjects.includes(newSubjectInput)) {
-        setIdentity({ ...identity, subjects: [...identity.subjects, newSubjectInput] });
+    // Safety check: ensure identity.subjects exists
+    const currentSubjects = identity.subjects || [];
+    if (newSubjectInput && !currentSubjects.includes(newSubjectInput)) {
+        setIdentity({ ...identity, subjects: [...currentSubjects, newSubjectInput] });
         setNewSubjectInput('');
     }
   };
   
   const removeSubject = (subj) => {
-    if(identity.subjects.length <= 1) { alert("Minimal harus ada 1 Mapel."); return; }
+    const currentSubjects = identity.subjects || [];
+    if(currentSubjects.length <= 1) { alert("Minimal harus ada 1 Mapel."); return; }
     if(window.confirm(`Hapus Mapel ${subj}?`)) {
-        setIdentity({ ...identity, subjects: identity.subjects.filter(s => s !== subj) });
+        setIdentity({ ...identity, subjects: currentSubjects.filter(s => s !== subj) });
     }
   };
 
@@ -171,7 +174,7 @@ const IdentitySection = ({ identity, setIdentity, classList, setClassList, selec
                 <button onClick={addSubject} className="bg-blue-600 text-white px-4 rounded"><Plus/></button>
             </div>
             <div className="flex flex-wrap gap-2">
-                {identity.subjects.map(subj => (
+                {(identity.subjects || ['Mata Pelajaran Umum']).map(subj => (
                     <div key={subj} className="bg-blue-50 px-3 py-1 rounded-full border border-blue-200 flex items-center gap-2 text-sm text-blue-800">
                         {subj}
                         <button onClick={() => removeSubject(subj)} className="text-red-400 hover:text-red-600"><Trash2 size={12}/></button>
@@ -223,7 +226,8 @@ const AttendanceSection = ({ selectedClass, selectedSubject, students, onUpdateS
   // --- FITUR SALIN SISWA ---
   const copyStudentsFromOtherSubject = () => {
       // Cari mapel lain yang punya data di kelas yang sama
-      const otherSubjects = identity.subjects.filter(s => s !== selectedSubject);
+      const subjects = identity.subjects || [];
+      const otherSubjects = subjects.filter(s => s !== selectedSubject);
       if(otherSubjects.length === 0) { alert("Tidak ada Mapel lain yang tersedia."); return; }
       
       const sourceSubject = prompt(`Salin siswa dari Mapel apa?\n(Ketik persis: ${otherSubjects.join(', ')})`);
@@ -582,8 +586,8 @@ const ReportSection = ({ identity, selectedClass, selectedSubject, students, sel
                                     <td className="border border-black p-1">{s.name}</td>
                                     <td className="border border-black p-1 text-center">{g.avgFormative}</td>
                                     <td className="border border-black p-1 text-center bg-yellow-50">{g.avgLM}</td>
-                                    <td className="border border-black p-1 text-center bg-yellow-50">{g.sts}</td>
-                                    <td className="border border-black p-1 text-center bg-yellow-50">{g.sas}</td>
+                                    <td className="border border-black p-1 text-center">{g.sts}</td>
+                                    <td className="border border-black p-1 text-center">{g.sas}</td>
                                     <td className="border border-black p-1 text-center">{g.avgAttitude}</td>
                                     <td className="border border-black p-1 text-center">{g.attendanceScore}</td>
                                     <td className="border border-black p-1 text-center font-bold bg-slate-100">{g.finalScore}</td>
@@ -625,10 +629,24 @@ const App = () => {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
   // LOCAL STORAGE KEYS
-  const [identity, setIdentity] = useState(() => JSON.parse(localStorage.getItem('guru_identity')) || initialIdentity);
+  const [identity, setIdentity] = useState(() => {
+    const saved = localStorage.getItem('guru_identity');
+    const parsed = saved ? JSON.parse(saved) : initialIdentity;
+    // Migration: Ensure subjects array exists for old data
+    if (!parsed.subjects) {
+      parsed.subjects = ['Mata Pelajaran Umum'];
+    }
+    return parsed;
+  });
+
   const [classList, setClassList] = useState(() => JSON.parse(localStorage.getItem('guru_classList')) || []);
   const [selectedClass, setSelectedClass] = useState(() => localStorage.getItem('guru_selectedClass') || '');
-  const [selectedSubject, setSelectedSubject] = useState(() => localStorage.getItem('guru_selectedSubject') || identity.subjects[0] || 'Mata Pelajaran Umum');
+  
+  const [selectedSubject, setSelectedSubject] = useState(() => {
+     const saved = localStorage.getItem('guru_selectedSubject');
+     // Safe fallback
+     return saved || (identity.subjects && identity.subjects[0]) || 'Mata Pelajaran Umum';
+  });
   
   const [studentsData, setStudentsData] = useState(() => JSON.parse(localStorage.getItem('guru_studentsData')) || {});
   const [curriculumData, setCurriculumData] = useState(() => JSON.parse(localStorage.getItem('guru_curriculumData')) || []);
