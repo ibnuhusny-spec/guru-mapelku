@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
+import * as XLSX from 'xlsx'; // UNCOMMENT BARIS INI DI KOMPUTER LOKAL SETELAH 'npm install xlsx'
 import { 
   User, Users, BookOpen, Calendar, 
   ClipboardList, PenTool, Heart, 
   BarChart2, Menu, Plus, Trash2, 
-  Printer, ChevronDown
+  Printer, ChevronDown, Download, Upload, FileSpreadsheet
 } from 'lucide-react';
 
 // --- UTILS & DATA STRUCTURE ---
@@ -18,9 +19,8 @@ const initialIdentity = {
   academicYear: '2025/2026',
 };
 
-// Fungsi hitung nilai (dipindahkan keluar agar bisa diakses global)
+// Fungsi hitung nilai
 const calculateFinalGrade = (student) => {
-  // Pastikan key yang diambil konsisten (formative, summative)
   const formativeScores = Object.values(student.formative || {}).map(v => parseInt(v)||0);
   const summativeScores = Object.values(student.summative || {}).map(v => parseInt(v)||0);
 
@@ -118,6 +118,76 @@ const AttendanceSection = ({ selectedClass, students, onUpdateStudents }) => {
     onUpdateStudents(updated);
   };
 
+  // --- FITUR EXCEL ---
+
+  // 1. Download Template Excel
+  const handleDownloadTemplate = () => {
+    // Cek ketersediaan library XLSX (Untuk Preview vs Lokal)
+    if (typeof XLSX === 'undefined') {
+      alert("FITUR INI BELUM AKTIF DI PREVIEW.\n\nUntuk menggunakannya di komputer lokal:\n1. Jalankan 'npm install xlsx'\n2. Buka file App.jsx\n3. Uncomment baris 'import * as XLSX from xlsx'");
+      return;
+    }
+
+    // Data contoh agar guru tahu formatnya
+    const templateData = [
+      { No: 1, NISN: "1234567890", NIM: "1001", Nama: "Ahmad Santoso", Gender: "L" },
+      { No: 2, NISN: "0987654321", NIM: "1002", Nama: "Budi Pratama", Gender: "L" },
+      { No: 3, NISN: "1122334455", NIM: "1003", Nama: "Citra Lestari", Gender: "P" },
+    ];
+
+    const ws = XLSX.utils.json_to_sheet(templateData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Template_Siswa");
+    XLSX.writeFile(wb, "Template_Input_Siswa.xlsx");
+  };
+
+  // 2. Import Excel
+  const handleImportExcel = (e) => {
+    // Cek ketersediaan library XLSX (Untuk Preview vs Lokal)
+    if (typeof XLSX === 'undefined') {
+      alert("FITUR INI BELUM AKTIF DI PREVIEW.\n\nUntuk menggunakannya di komputer lokal:\n1. Jalankan 'npm install xlsx'\n2. Buka file App.jsx\n3. Uncomment baris 'import * as XLSX from xlsx'");
+      return;
+    }
+
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const bstr = evt.target.result;
+      const wb = XLSX.read(bstr, { type: 'binary' });
+      const wsName = wb.SheetNames[0]; // Ambil sheet pertama
+      const ws = wb.Sheets[wsName];
+      const data = XLSX.utils.sheet_to_json(ws);
+
+      if (data.length === 0) {
+        alert("File Excel kosong atau format tidak terbaca.");
+        return;
+      }
+
+      // Mapping data dari Excel ke Format Aplikasi
+      const importedStudents = data.map((row, index) => ({
+        id: Date.now() + index + Math.random(), // Buat ID unik
+        name: row['Nama'] || row['nama'] || row['NAMA'] || 'Tanpa Nama',
+        nisn: row['NISN'] || row['nisn'] || '-',
+        nim: row['NIM'] || row['nim'] || '-',
+        gender: (row['Gender'] || row['gender'] || 'L').toUpperCase(),
+        attendance: { presentToday: false, s: 0, i: 0, a: 0 },
+        // Siapkan objek nilai kosong agar tidak error
+        formative: {}, 
+        summative: {}, 
+        attitude: {} 
+      }));
+
+      // Gabungkan dengan data yg sudah ada
+      if (window.confirm(`Ditemukan ${importedStudents.length} data siswa. Apakah ingin ditambahkan ke kelas ini?`)) {
+        onUpdateStudents([...students, ...importedStudents]);
+      }
+    };
+    reader.readAsBinaryString(file);
+    e.target.value = null; // Reset input file
+  };
+
   return (
     <div className="space-y-6 animate-fadeIn">
       <div className="flex justify-between items-center border-b pb-2">
@@ -125,7 +195,38 @@ const AttendanceSection = ({ selectedClass, students, onUpdateStudents }) => {
          <div className="bg-blue-100 px-4 py-1 rounded-lg font-bold text-blue-800">Kelas: {selectedClass}</div>
       </div>
 
-      {/* Input Siswa Baru */}
+      {/* --- BOX IMPORT EXCEL --- */}
+      <div className="bg-green-50 p-4 rounded-lg border border-green-200 flex flex-col md:flex-row gap-4 items-center justify-between mb-6 shadow-sm">
+        <div className="flex items-center gap-3 text-green-800">
+           <div className="bg-green-100 p-2 rounded-full"><FileSpreadsheet size={24}/></div>
+           <div>
+             <h4 className="font-bold text-sm">Import Data dari Excel</h4>
+             <p className="text-xs text-green-700">Gunakan template yang disediakan agar format sesuai.</p>
+           </div>
+        </div>
+        <div className="flex gap-2">
+          {/* Tombol Download */}
+          <button 
+            onClick={handleDownloadTemplate}
+            className="flex items-center gap-2 bg-white border border-green-600 text-green-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-green-50 transition-colors"
+          >
+            <Download size={16}/> Download Template
+          </button>
+          
+          {/* Tombol Upload (Input File tersembunyi) */}
+          <label className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-green-700 cursor-pointer transition-colors shadow-sm">
+            <Upload size={16}/> Upload Excel
+            <input 
+              type="file" 
+              accept=".xlsx, .xls" 
+              className="hidden" 
+              onChange={handleImportExcel}
+            />
+          </label>
+        </div>
+      </div>
+
+      {/* Input Siswa Manual */}
       <div className="bg-slate-50 p-4 rounded-lg border flex flex-wrap gap-2 items-end">
         <div className="w-32"><label className="text-xs font-bold">NISN</label><input value={newStudent.nisn} onChange={e=>setNewStudent({...newStudent, nisn:e.target.value})} className="w-full p-2 border rounded text-sm"/></div>
         <div className="w-32"><label className="text-xs font-bold">NIM</label><input value={newStudent.nim} onChange={e=>setNewStudent({...newStudent, nim:e.target.value})} className="w-full p-2 border rounded text-sm"/></div>
