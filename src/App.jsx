@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx'; // HAPUS TANDA // DI DEPAN INI JIKA DI KOMPUTER
 import { 
   User, Users, BookOpen, Calendar, 
   ClipboardList, PenTool, Heart, 
   BarChart2, Menu, Plus, Trash2, 
   Printer, ChevronDown, Download, Upload, FileSpreadsheet,
-  CalendarDays, FileText
+  CalendarDays, FileText, Save, Database
 } from 'lucide-react';
 
 // --- UTILS & DATA STRUCTURE ---
@@ -50,14 +50,29 @@ const IdentitySection = ({ identity, setIdentity, classList, setClassList, selec
   };
 
   const removeClass = (cls) => {
-    const newList = classList.filter(c => c !== cls);
-    setClassList(newList);
-    if (selectedClass === cls) setSelectedClass(newList[0] || '');
+    if(window.confirm(`Yakin ingin menghapus kelas ${cls}? Data siswa di dalamnya juga akan terhapus permanen.`)) {
+        const newList = classList.filter(c => c !== cls);
+        setClassList(newList);
+        if (selectedClass === cls) setSelectedClass(newList[0] || '');
+    }
   };
+
+  // Fungsi Reset Data Total
+  const handleResetAll = () => {
+    if(window.confirm("PERINGATAN KERAS!\n\nApakah Anda yakin ingin MENGHAPUS SEMUA DATA APLIKASI?\n(Identitas, Siswa, Nilai, Jurnal akan hilang selamanya).\n\nTindakan ini tidak bisa dibatalkan.")) {
+        localStorage.clear();
+        window.location.reload();
+    }
+  }
 
   return (
     <div className="space-y-6 animate-fadeIn">
-      <h2 className="text-2xl font-bold text-slate-800 border-b pb-2">1. Identitas & Pengaturan Kelas</h2>
+      <div className="flex justify-between items-center border-b pb-2">
+        <h2 className="text-2xl font-bold text-slate-800">1. Identitas & Pengaturan Kelas</h2>
+        <button onClick={handleResetAll} className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1 border border-red-200 px-2 py-1 rounded">
+            <Trash2 size={12}/> Reset Semua Data Aplikasi
+        </button>
+      </div>
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-white p-6 rounded-lg shadow-sm border space-y-4">
@@ -92,6 +107,9 @@ const IdentitySection = ({ identity, setIdentity, classList, setClassList, selec
                 <button onClick={() => removeClass(cls)} className="text-red-500 hover:text-red-700"><Trash2 size={14}/></button>
               </div>
             ))}
+          </div>
+          <div className="mt-4 p-3 bg-blue-50 text-blue-800 text-sm rounded flex items-center gap-2">
+            <Database size={16}/> <strong>Status:</strong> Data tersimpan otomatis di browser ini.
           </div>
         </div>
       </div>
@@ -154,10 +172,10 @@ const AttendanceSection = ({ selectedClass, students, onUpdateStudents, selected
       const data = XLSX.utils.sheet_to_json(ws);
       const imported = data.map((row, i) => ({
         id: Date.now() + i,
-        name: row['Nama'] || 'No Name',
-        nisn: row['NISN'] || '-',
-        nim: row['NIM'] || '-',
-        gender: row['Gender'] || 'L',
+        name: row['Nama'] || row['nama'] || row['NAMA'] || 'No Name',
+        nisn: row['NISN'] || row['nisn'] || '-',
+        nim: row['NIM'] || row['nim'] || '-',
+        gender: (row['Gender'] || row['gender'] || 'L').toUpperCase(),
         attendanceHistory: {},
         recap: { s: 0, i: 0, a: 0 },
         formative: {}, summative: {}, attitude: {}
@@ -465,13 +483,54 @@ const App = () => {
   const [activeTab, setActiveTab] = useState('identity');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-  const [identity, setIdentity] = useState(initialIdentity);
-  const [classList, setClassList] = useState([]); 
-  const [selectedClass, setSelectedClass] = useState(''); 
-  const [studentsData, setStudentsData] = useState({});
-  const [curriculumData, setCurriculumData] = useState([]); 
-  const [journalData, setJournalData] = useState([]); 
 
+  // --- STATE WITH LOCAL STORAGE PERSISTENCE ---
+  
+  // 1. Identitas Guru
+  const [identity, setIdentity] = useState(() => {
+    const saved = localStorage.getItem('guru_identity');
+    return saved ? JSON.parse(saved) : initialIdentity;
+  });
+
+  // 2. Daftar Kelas
+  const [classList, setClassList] = useState(() => {
+    const saved = localStorage.getItem('guru_classList');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // 3. Kelas Terpilih
+  const [selectedClass, setSelectedClass] = useState(() => {
+     return localStorage.getItem('guru_selectedClass') || '';
+  });
+
+  // 4. Data Siswa & Nilai
+  const [studentsData, setStudentsData] = useState(() => {
+    const saved = localStorage.getItem('guru_studentsData');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  // 5. Kurikulum (TP/KKTP)
+  const [curriculumData, setCurriculumData] = useState(() => {
+    const saved = localStorage.getItem('guru_curriculumData');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // 6. Jurnal Harian
+  const [journalData, setJournalData] = useState(() => {
+    const saved = localStorage.getItem('guru_journalData');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // --- AUTO SAVE EFFECT ---
+  // Setiap kali data berubah, simpan ke localStorage
+  useEffect(() => { localStorage.setItem('guru_identity', JSON.stringify(identity)); }, [identity]);
+  useEffect(() => { localStorage.setItem('guru_classList', JSON.stringify(classList)); }, [classList]);
+  useEffect(() => { localStorage.setItem('guru_selectedClass', selectedClass); }, [selectedClass]);
+  useEffect(() => { localStorage.setItem('guru_studentsData', JSON.stringify(studentsData)); }, [studentsData]);
+  useEffect(() => { localStorage.setItem('guru_curriculumData', JSON.stringify(curriculumData)); }, [curriculumData]);
+  useEffect(() => { localStorage.setItem('guru_journalData', JSON.stringify(journalData)); }, [journalData]);
+
+  // Helper Wrappers
   const getCurrentStudents = () => selectedClass ? (studentsData[selectedClass] || []) : [];
   const updateCurrentStudents = (newList) => selectedClass && setStudentsData({ ...studentsData, [selectedClass]: newList });
 
