@@ -54,14 +54,12 @@ const calculateFinalGrade = (student) => {
   const sas = parseInt(summativeData['SAS']) || 0;
 
   // C. Rata-rata Gabungan Sumatif (Dinamis)
-  // Jika STS/SAS belum diisi (0), jangan ikut membagi agar nilai tidak anjlok
   let sumTotal = avgLM;
-  let sumDivider = 1; // Minimal pembagi 1 (untuk LM)
+  let sumDivider = 1; 
   
   if(sts > 0) { sumTotal += sts; sumDivider++; }
   if(sas > 0) { sumTotal += sas; sumDivider++; }
   
-  // Jika semua masih 0, hasil 0.
   const totalSummativeMix = (avgLM === 0 && sts === 0 && sas === 0) ? 0 : (sumTotal / sumDivider);
 
   // 3. Rata-rata Sikap -> Bobot 20%
@@ -100,7 +98,8 @@ const KopSurat = ({ identity }) => (
     </div>
     <div className="flex-1 text-center">
         <h3 className="text-xl font-bold uppercase tracking-wide m-0">PEMERINTAH PROVINSI</h3>
-        <h2 className="text-2xl md:text-3xl font-extrabold uppercase m-0 tracking-wider leading-tight">{identity.schoolName || 'NAMA SEKOLAH'}</h2>
+        {/* FIX: whitespace-pre-wrap AGAR ENTER TERBACA */}
+        <h2 className="text-2xl md:text-3xl font-extrabold uppercase m-0 tracking-wider leading-tight whitespace-pre-wrap">{identity.schoolName || 'NAMA SEKOLAH'}</h2>
         <p className="text-sm italic mt-1">{identity.schoolAddress || 'Alamat Sekolah Belum Diisi'}</p>
     </div>
   </div>
@@ -122,7 +121,7 @@ const LandingPage = ({ onStart, identity, setIdentity }) => {
         <h3 className="text-blue-200 font-medium tracking-widest text-sm uppercase mb-2">Sistem Administrasi Guru</h3>
         <textarea value={identity.schoolName} onChange={(e) => setIdentity({...identity, schoolName: e.target.value.toUpperCase()})} className="bg-transparent border-b border-white/30 text-center text-2xl md:text-4xl font-bold text-white placeholder-white/50 focus:outline-none focus:border-yellow-400 w-full mb-8 pb-2 resize-none overflow-hidden" placeholder="KETIK NAMA SEKOLAH DISINI" rows={2} style={{ lineHeight: '1.2' }} />
         <button onClick={onStart} className="group bg-yellow-500 hover:bg-yellow-400 text-blue-900 font-bold py-4 px-10 rounded-full shadow-lg hover:shadow-yellow-500/50 transition-all duration-300 flex items-center gap-3 text-lg">Masuk Aplikasi <ArrowRight className="group-hover:translate-x-1 transition-transform"/></button>
-        <div className="mt-12 text-center opacity-60 text-xs"><p>Dikembangkan oleh:</p><p className="font-semibold text-sm tracking-wide mt-1">IBNU HUSNY</p><p>Versi 3.1 (Fixed Logic)</p></div>
+        <div className="mt-12 text-center opacity-60 text-xs"><p>Dikembangkan oleh:</p><p className="font-semibold text-sm tracking-wide mt-1">IBNU HUSNY</p><p>Versi 3.2 (KOP Fixed)</p></div>
       </div>
     </div>
   );
@@ -142,8 +141,12 @@ const IdentitySection = ({ identity, setIdentity, classList, setClassList, selec
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-white p-6 rounded-lg shadow-sm border space-y-4">
           <h3 className="font-bold text-blue-600 flex items-center gap-2"><User size={18}/> Data Administrasi</h3>
-          <div><label className="text-sm text-slate-500">Nama Sekolah</label><input type="text" className="w-full p-2 border rounded" value={identity.schoolName} onChange={e=>setIdentity({...identity, schoolName: e.target.value})} /></div>
-          <div><label className="text-sm text-slate-500">Alamat Sekolah</label><input type="text" className="w-full p-2 border rounded" value={identity.schoolAddress} onChange={e=>setIdentity({...identity, schoolAddress: e.target.value})} /></div>
+          <div>
+            <label className="text-sm text-slate-500">Nama Sekolah</label>
+            {/* FIX: Ganti Input jadi Textarea agar bisa Enter juga di sini */}
+            <textarea className="w-full p-2 border rounded resize-none" rows={2} value={identity.schoolName} onChange={e=>setIdentity({...identity, schoolName: e.target.value})} />
+          </div>
+          <div><label className="text-sm text-slate-500">Alamat Sekolah (Untuk KOP)</label><input type="text" className="w-full p-2 border rounded" value={identity.schoolAddress} onChange={e=>setIdentity({...identity, schoolAddress: e.target.value})} /></div>
           <div className="flex gap-2"><div className="flex-1"><label className="text-sm text-slate-500">Kepala Sekolah</label><input type="text" className="w-full p-2 border rounded" value={identity.principalName} onChange={e=>setIdentity({...identity, principalName: e.target.value})} /></div><div className="w-1/3"><label className="text-sm text-slate-500">NIP KS</label><input type="text" className="w-full p-2 border rounded" value={identity.principalNip} onChange={e=>setIdentity({...identity, principalNip: e.target.value})} /></div></div>
           <div><label className="text-sm text-slate-500">Mata Pelajaran</label><input type="text" className="w-full p-2 border rounded" value={identity.subject} onChange={e=>setIdentity({...identity, subject: e.target.value})} /></div>
           <div className="flex gap-2"><div className="flex-1"><label className="text-sm text-slate-500">Guru Mapel</label><input type="text" className="w-full p-2 border rounded" value={identity.teacherName} onChange={e=>setIdentity({...identity, teacherName: e.target.value})} /></div><div className="w-1/3"><label className="text-sm text-slate-500">NIP Guru</label><input type="text" className="w-full p-2 border rounded" value={identity.nip} onChange={e=>setIdentity({...identity, nip: e.target.value})} /></div></div>
