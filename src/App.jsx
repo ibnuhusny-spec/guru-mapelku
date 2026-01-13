@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import * as XLSX from 'xlsx'; // JANGAN LUPA HAPUS TANDA // INI DI VS CODE (Agar fitur Excel jalan)
+import * as XLSX from 'xlsx'; // JANGAN LUPA HAPUS TANDA // INI DI VS CODE
 import { 
   User, Users, BookOpen, Calendar, 
   ClipboardList, PenTool, Heart, 
@@ -22,9 +22,8 @@ const initialIdentity = {
   academicYear: '2025/2026',
 };
 
-// --- HELPER FUNCTIONS (UPDATED) ---
+// --- HELPER FUNCTIONS ---
 
-// Helper Baru: Menghitung statistik murni dari history tanggal, bukan input manual
 const getAttendanceStats = (student) => {
     const history = Object.values(student.attendanceHistory || {});
     const h = history.filter(s => s === 'H').length;
@@ -35,26 +34,53 @@ const getAttendanceStats = (student) => {
 };
 
 const calculateFinalGrade = (student) => {
-  const formativeScores = Object.values(student.formative || {}).map(v => parseInt(v)||0);
-  const avgFormative = formativeScores.length ? formativeScores.reduce((a,b)=>a+b,0)/formativeScores.length : 0;
+  // 1. Rata-rata Formatif (TP1-TP10)
+  const formativeValues = Object.values(student.formative || {}).map(v => parseInt(v)||0).filter(v => v > 0);
+  const avgFormative = formativeValues.length ? formativeValues.reduce((a,b)=>a+b,0)/formativeValues.length : 0;
 
-  const summativeScores = Object.values(student.summative || {}).map(v => parseInt(v)||0);
-  const avgSummative = summativeScores.length ? summativeScores.reduce((a,b)=>a+b,0)/summativeScores.length : 0;
-
-  const attitudeScores = Object.values(student.attitude || {}).map(v => parseInt(v)||0);
-  const avgAttitude = attitudeScores.length ? attitudeScores.reduce((a,b)=>a+b,0)/attitudeScores.length : 0;
-
-  const { h, total } = getAttendanceStats(student);
+  // 2. Pecah Sumatif: LM, STS, SAS
+  const summativeData = student.summative || {};
   
-  // LOGIKA BARU: Jika total pertemuan 0, nilai kehadiran 0 (bukan 100)
+  // A. Rata-rata Lingkup Materi (LM1-LM10)
+  const lmValues = [];
+  for(let k=1; k<=10; k++) {
+      const val = parseInt(summativeData[`LM${k}`]) || 0;
+      if(val > 0) lmValues.push(val);
+  }
+  const avgLM = lmValues.length ? lmValues.reduce((a,b)=>a+b,0)/lmValues.length : 0;
+
+  // B. STS dan SAS
+  const sts = parseInt(summativeData['STS']) || 0;
+  const sas = parseInt(summativeData['SAS']) || 0;
+
+  // C. Rata-rata Gabungan Sumatif (Materi + STS + SAS)
+  // Pembagi dinamis: jika ada STS/SAS, sertakan dalam pembagi
+  let sumComponents = [avgLM];
+  if(sts > 0) sumComponents.push(sts);
+  if(sas > 0) sumComponents.push(sas);
+  
+  // Jika belum ada nilai sama sekali, rata-rata 0. Jika ada, rata-rata dari komponen yang ada.
+  // Tapi biasanya STS/SAS wajib pembagi 3 jika kurikulum ketat. Di sini kita buat fleksibel rata-rata komponen terisi.
+  // Atau standard: (AvgLM + STS + SAS) / 3 (anggap 0 jika kosong)
+  const totalSummativeMix = (avgLM + sts + sas) / 3; 
+
+  // 3. Rata-rata Sikap
+  const attitudeValues = Object.values(student.attitude || {}).map(v => parseInt(v)||0).filter(v => v > 0);
+  const avgAttitude = attitudeValues.length ? attitudeValues.reduce((a,b)=>a+b,0)/attitudeValues.length : 0;
+
+  // 4. Nilai Kehadiran
+  const { h, total } = getAttendanceStats(student);
   const attendanceScore = total > 0 ? (h / total) * 100 : 0;
 
-  const finalScore = (avgFormative * 0.35) + (avgSummative * 0.35) + (avgAttitude * 0.20) + (attendanceScore * 0.10);
+  // 5. Nilai Akhir (Bobot: F=35%, S=35%, A=20%, H=10%)
+  const finalScore = (avgFormative * 0.35) + (totalSummativeMix * 0.35) + (avgAttitude * 0.20) + (attendanceScore * 0.10);
 
   return {
-    avgFormative: avgFormative.toFixed(1),
-    avgSummative: avgSummative.toFixed(1),
-    avgAttitude: avgAttitude.toFixed(1),
+    avgFormative: avgFormative.toFixed(0),
+    avgLM: avgLM.toFixed(0),
+    sts: sts,
+    sas: sas,
+    avgAttitude: avgAttitude.toFixed(0),
     attendanceScore: attendanceScore.toFixed(0),
     finalScore: Math.round(finalScore)
   };
@@ -96,7 +122,7 @@ const LandingPage = ({ onStart, identity, setIdentity }) => {
         <h3 className="text-blue-200 font-medium tracking-widest text-sm uppercase mb-2">Sistem Administrasi Guru</h3>
         <textarea value={identity.schoolName} onChange={(e) => setIdentity({...identity, schoolName: e.target.value.toUpperCase()})} className="bg-transparent border-b border-white/30 text-center text-2xl md:text-4xl font-bold text-white placeholder-white/50 focus:outline-none focus:border-yellow-400 w-full mb-8 pb-2 resize-none overflow-hidden" placeholder="KETIK NAMA SEKOLAH DISINI" rows={2} style={{ lineHeight: '1.2' }} />
         <button onClick={onStart} className="group bg-yellow-500 hover:bg-yellow-400 text-blue-900 font-bold py-4 px-10 rounded-full shadow-lg hover:shadow-yellow-500/50 transition-all duration-300 flex items-center gap-3 text-lg">Masuk Aplikasi <ArrowRight className="group-hover:translate-x-1 transition-transform"/></button>
-        <div className="mt-12 text-center opacity-60 text-xs"><p>Dikembangkan oleh:</p><p className="font-semibold text-sm tracking-wide mt-1">IBNU HUSNY</p><p>Versi 3.0 (Smart Attendance)</p></div>
+        <div className="mt-12 text-center opacity-60 text-xs"><p>Dikembangkan oleh:</p><p className="font-semibold text-sm tracking-wide mt-1">IBNU HUSNY</p><p>Versi 3.1 (Fixed Report)</p></div>
       </div>
     </div>
   );
@@ -139,20 +165,16 @@ const AttendanceSection = ({ selectedClass, students, onUpdateStudents, selected
 
   if (!selectedClass) return <div className="p-10 text-center text-slate-500">Pilih Kelas Terlebih Dahulu.</div>;
 
-  const addStudent = () => { if(newStudent.name){ onUpdateStudents([...students, { ...newStudent, id: Date.now(), attendanceHistory: {} }]); setNewStudent({name:'',nim:'',nisn:'',gender:'L'}); }};
+  const addStudent = () => { if(newStudent.name){ onUpdateStudents([...students, { ...newStudent, id: Date.now(), attendanceHistory: {}, recap: {s:0,i:0,a:0} }]); setNewStudent({name:'',nim:'',nisn:'',gender:'L'}); }};
   
-  // UPDATE STATUS HARIAN (Hanya 1 status per hari)
   const updateDailyStatus = (id, status) => {
     onUpdateStudents(students.map(s => {
         if(s.id === id) {
-            // Jika diklik status yang sama, maka uncheck (hapus), jika beda, set baru
             const currentStatus = s.attendanceHistory?.[selectedDate];
             const newStatus = currentStatus === status ? undefined : status;
-            
             const newHistory = { ...s.attendanceHistory };
             if (newStatus) newHistory[selectedDate] = newStatus;
             else delete newHistory[selectedDate];
-
             return { ...s, attendanceHistory: newHistory };
         }
         return s;
@@ -161,14 +183,10 @@ const AttendanceSection = ({ selectedClass, students, onUpdateStudents, selected
 
   const markAllPresent = () => {
     if (confirm(`Tandai semua ${students.length} siswa sebagai HADIR pada tanggal ${selectedDate}?`)) {
-        onUpdateStudents(students.map(s => ({ 
-            ...s, 
-            attendanceHistory: { ...s.attendanceHistory, [selectedDate]: 'H' } 
-        })));
+        onUpdateStudents(students.map(s => ({ ...s, attendanceHistory: { ...s.attendanceHistory, [selectedDate]: 'H' } })));
     }
   };
 
-  // EXCEL IMPORTS/EXPORTS
   const handleDownloadTemplate = () => {
     if (typeof XLSX === 'undefined') { alert("Fitur Excel butuh 'npm install xlsx' di komputer lokal."); return; }
     const ws = XLSX.utils.json_to_sheet([{ No: 1, NISN: "123", NIM: "101", Nama: "Siswa A", Gender: "L" }]);
@@ -223,68 +241,36 @@ const AttendanceSection = ({ selectedClass, students, onUpdateStudents, selected
          <div><h2 className="text-2xl font-bold text-slate-800">2. Daftar Hadir</h2><p className="text-sm text-blue-600"><Calendar size={14} className="inline"/> {formatDateIndo(selectedDate)}</p></div>
          <div className="flex gap-2"><button onClick={markAllPresent} className="bg-blue-100 text-blue-700 px-3 py-1 rounded font-bold hover:bg-blue-200 text-sm">Hadir Semua</button></div>
       </div>
-      
-      {/* EXPORT TOOLS */}
       <div className="bg-white p-3 rounded border flex flex-wrap gap-2 items-center text-sm shadow-sm">
         <label className="bg-green-600 text-white px-3 py-1 rounded cursor-pointer flex gap-1"><Upload size={14}/> Import<input type="file" className="hidden" onChange={handleImportExcel}/></label>
         <button onClick={handleDownloadTemplate} className="bg-slate-100 border px-3 py-1 rounded">Template</button>
         <div className="border-l pl-2 flex gap-1 items-center">
             <input type="month" value={exportMonth} onChange={e=>setExportMonth(e.target.value)} className="border rounded px-1"/>
-            <button onClick={handleExportMonthly} className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 flex gap-1"><FileSpreadsheet size={14}/> Rekap Sebulan</button>
+            <button onClick={handleExportMonthly} className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 flex gap-1"><FileSpreadsheet size={14}/> Export Bulanan</button>
         </div>
       </div>
-
       <div className="bg-slate-50 p-2 rounded border flex gap-2 mb-2"><input placeholder="Nama Siswa Baru..." value={newStudent.name} onChange={e=>setNewStudent({...newStudent, name:e.target.value})} className="flex-1 border p-1 rounded"/><button onClick={addStudent}><Plus/></button></div>
-      
-      <div className="overflow-x-auto bg-white border rounded">
-        <table className="w-full text-sm text-left">
-          <thead className="bg-slate-800 text-white">
-            <tr>
-              <th className="p-3" rowSpan={2}>No</th>
-              <th className="p-3" rowSpan={2}>Nama Siswa</th>
-              <th className="p-2 text-center border-x bg-blue-900" colSpan={4}>Status Hari Ini ({selectedDate})</th>
-              <th className="p-2 text-center bg-slate-700" colSpan={4}>Total Akumulasi</th>
-              <th className="p-3 w-8" rowSpan={2}>Del</th>
-            </tr>
-            <tr className="text-xs text-center font-bold">
-                <th className="p-2 bg-blue-100 text-blue-900 w-10">H</th>
-                <th className="p-2 bg-yellow-100 text-yellow-800 w-10">S</th>
-                <th className="p-2 bg-yellow-100 text-yellow-800 w-10">I</th>
-                <th className="p-2 bg-red-100 text-red-800 w-10">A</th>
-                <th className="p-2 bg-slate-100 w-8">H</th>
-                <th className="p-2 bg-slate-100 w-8">S</th>
-                <th className="p-2 bg-slate-100 w-8">I</th>
-                <th className="p-2 bg-slate-100 w-8">A</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
+      <div className="overflow-x-auto bg-white border rounded"><table className="w-full text-sm text-left"><thead className="bg-slate-800 text-white">
+            <tr><th className="p-3" rowSpan={2}>No</th><th className="p-3" rowSpan={2}>Nama Siswa</th><th className="p-2 text-center border-x bg-blue-900" colSpan={4}>Status Hari Ini ({selectedDate})</th><th className="p-2 text-center bg-slate-700" colSpan={4}>Total Akumulasi</th><th className="p-3 w-8" rowSpan={2}>Del</th></tr>
+            <tr className="text-xs text-center font-bold"><th className="p-2 bg-blue-100 text-blue-900 w-10">H</th><th className="p-2 bg-yellow-100 text-yellow-800 w-10">S</th><th className="p-2 bg-yellow-100 text-yellow-800 w-10">I</th><th className="p-2 bg-red-100 text-red-800 w-10">A</th><th className="p-2 bg-slate-100 w-8">H</th><th className="p-2 bg-slate-100 w-8">S</th><th className="p-2 bg-slate-100 w-8">I</th><th className="p-2 bg-slate-100 w-8">A</th></tr>
+          </thead><tbody>
             {students.map((s, idx) => {
                 const statusToday = s.attendanceHistory?.[selectedDate];
-                const stats = getAttendanceStats(s); // Hitung total otomatis
+                const stats = getAttendanceStats(s);
                 return (
                   <tr key={s.id} className="hover:bg-slate-50">
                     <td className="p-3 text-center">{idx+1}</td>
                     <td className="p-3 font-medium">{s.name}<br/><span className="text-xs text-gray-400">{s.nisn}</span></td>
-                    
-                    {/* CHECKBOXES HARI INI (EKSKLUSIF) */}
                     <td className="p-2 text-center bg-blue-50 border-l"><input type="checkbox" checked={statusToday === 'H'} onChange={() => updateDailyStatus(s.id, 'H')} className="w-5 h-5 accent-blue-600 cursor-pointer"/></td>
                     <td className="p-2 text-center bg-yellow-50"><input type="checkbox" checked={statusToday === 'S'} onChange={() => updateDailyStatus(s.id, 'S')} className="w-5 h-5 accent-yellow-600 cursor-pointer"/></td>
                     <td className="p-2 text-center bg-yellow-50"><input type="checkbox" checked={statusToday === 'I'} onChange={() => updateDailyStatus(s.id, 'I')} className="w-5 h-5 accent-yellow-600 cursor-pointer"/></td>
                     <td className="p-2 text-center bg-red-50 border-r"><input type="checkbox" checked={statusToday === 'A'} onChange={() => updateDailyStatus(s.id, 'A')} className="w-5 h-5 accent-red-600 cursor-pointer"/></td>
-                    
-                    {/* TOTAL STATISTIK (READONLY) */}
-                    <td className="p-2 text-center font-bold text-blue-700">{stats.h}</td>
-                    <td className="p-2 text-center font-medium text-yellow-700">{stats.s}</td>
-                    <td className="p-2 text-center font-medium text-yellow-700">{stats.i}</td>
-                    <td className="p-2 text-center font-bold text-red-600">{stats.a}</td>
-                    
+                    <td className="p-2 text-center font-bold text-blue-700">{stats.h}</td><td className="p-2 text-center font-medium text-yellow-700">{stats.s}</td><td className="p-2 text-center font-medium text-yellow-700">{stats.i}</td><td className="p-2 text-center font-bold text-red-600">{stats.a}</td>
                     <td className="p-2 text-center text-red-500 cursor-pointer" onClick={()=>onUpdateStudents(students.filter(x=>x.id!==s.id))}><Trash2 size={14}/></td>
                   </tr>
                 )
             })}
-          </tbody>
-        </table>
-      </div>
+          </tbody></table></div>
     </div>
   );
 };
@@ -373,12 +359,11 @@ const ReportSection = ({ identity, selectedClass, students, selectedDate }) => {
         const kop = `<div class="kop"><h2>PEMERINTAH PROVINSI</h2><h1>${identity.schoolName}</h1><p>${identity.schoolAddress}</p></div>`;
         const title = `<div style="text-align:center; margin-bottom:15px;"><h3>REKAPITULASI NILAI RAPOR</h3><p>Kelas: ${selectedClass} | Tahun: ${identity.academicYear}</p></div>`;
         
-        let table = `<table><thead><tr style="background:#eee;"><th>No</th><th>NISN</th><th>Nama Siswa</th><th>H</th><th>S</th><th>I</th><th>A</th><th>R.Form</th><th>R.Sum</th><th>Sikap</th><th>Hadir</th><th>NA</th><th>Pred</th><th>Ket</th></tr></thead><tbody>`;
+        let table = `<table><thead><tr style="background:#eee;"><th>No</th><th>NISN</th><th>Nama Siswa</th><th>R.Form</th><th>R.LM</th><th>STS</th><th>SAS</th><th>Sikap</th><th>N.Hadir</th><th>NA</th><th>Pred</th><th>Ket</th></tr></thead><tbody>`;
         students.forEach((s, i) => {
-            const st = getAttendanceStats(s);
             const g = calculateFinalGrade(s);
             let p = 'D'; if(g.finalScore>=90) p='A'; else if(g.finalScore>=80) p='B'; else if(g.finalScore>=70) p='C';
-            table += `<tr><td style="text-align:center">${i+1}</td><td>${s.name}</td><td style="text-align:center">${st.h}</td><td style="text-align:center">${st.s}</td><td style="text-align:center">${st.i}</td><td style="text-align:center">${st.a}</td><td style="text-align:center">${g.avgFormative}</td><td style="text-align:center">${g.avgSummative}</td><td style="text-align:center">${g.avgAttitude}</td><td style="text-align:center">${g.attendanceScore}</td><td style="text-align:center"><b>${g.finalScore}</b></td><td style="text-align:center">${p}</td><td style="text-align:center">${g.finalScore>=75?'Tuntas':'Belum'}</td></tr>`;
+            table += `<tr><td style="text-align:center">${i+1}</td><td>${s.nisn}</td><td>${s.name}</td><td style="text-align:center">${g.avgFormative}</td><td style="text-align:center">${g.avgLM}</td><td style="text-align:center">${g.sts}</td><td style="text-align:center">${g.sas}</td><td style="text-align:center">${g.avgAttitude}</td><td style="text-align:center">${g.attendanceScore}</td><td style="text-align:center"><b>${g.finalScore}</b></td><td style="text-align:center">${p}</td><td style="text-align:center">${g.finalScore>=75?'Tuntas':'Belum'}</td></tr>`;
         });
         table += `</tbody></table>`;
         
@@ -391,12 +376,11 @@ const ReportSection = ({ identity, selectedClass, students, selectedDate }) => {
     const handleExportExcel = () => {
         if (typeof XLSX === 'undefined') { alert("Fitur Excel belum aktif."); return; }
         const kop = [[identity.schoolName.toUpperCase()], [identity.schoolAddress], [`REKAP NILAI KELAS ${selectedClass}`], []];
-        const headers = ["No","NISN","Nama","H","S","I","A","R.Form","R.Sum","Sikap","Nilai Hadir","NA","Pred","Ket"];
+        const headers = ["No","NISN","Nama","R.Form","R.LM","STS","SAS","Sikap","Nilai Hadir","NA","Pred","Ket"];
         const rows = students.map((s,i) => {
-            const st = getAttendanceStats(s);
             const g = calculateFinalGrade(s);
             let p = 'D'; if(g.finalScore>=90) p='A'; else if(g.finalScore>=80) p='B'; else if(g.finalScore>=70) p='C';
-            return [i+1, s.nisn, s.name, st.h, st.s, st.i, st.a, g.avgFormative, g.avgSummative, g.avgAttitude, g.attendanceScore, g.finalScore, p, g.finalScore>=75?'Tuntas':'Belum'];
+            return [i+1, s.nisn, s.name, g.avgFormative, g.avgLM, g.sts, g.sas, g.avgAttitude, g.attendanceScore, g.finalScore, p, g.finalScore>=75?'Tuntas':'Belum'];
         });
         const ttd = [[],[],["Mengetahui,", "", "", "", "", "", "", "", "Tanggal:", formatDateIndo(selectedDate)],["Kepala Sekolah", "", "", "", "", "", "", "", "Guru Mapel"],[],[],[],[identity.principalName, "", "", "", "", "", "", "", identity.teacherName],[`NIP. ${identity.principalNip}`, "", "", "", "", "", "", "", `NIP. ${identity.nip}`]];
         
@@ -429,12 +413,10 @@ const ReportSection = ({ identity, selectedClass, students, selectedDate }) => {
                         <tr>
                             <th className="border border-black p-1">No</th>
                             <th className="border border-black p-1 text-left">Nama Siswa</th>
-                            <th className="border border-black p-1 w-6">H</th>
-                            <th className="border border-black p-1 w-6">S</th>
-                            <th className="border border-black p-1 w-6">I</th>
-                            <th className="border border-black p-1 w-6">A</th>
                             <th className="border border-black p-1 w-10">R.Form</th>
-                            <th className="border border-black p-1 w-10">R.Sum</th>
+                            <th className="border border-black p-1 w-10 bg-yellow-50">R.LM</th>
+                            <th className="border border-black p-1 w-10 bg-yellow-50">STS</th>
+                            <th className="border border-black p-1 w-10 bg-yellow-50">SAS</th>
                             <th className="border border-black p-1 w-10">Sikap</th>
                             <th className="border border-black p-1 w-10">N.Hadir</th>
                             <th className="border border-black p-1 w-10 bg-slate-300">NA</th>
@@ -444,19 +426,16 @@ const ReportSection = ({ identity, selectedClass, students, selectedDate }) => {
                     </thead>
                     <tbody>
                         {students.map((s, idx) => {
-                            const st = getAttendanceStats(s);
                             const g = calculateFinalGrade(s);
                             let pred = 'D'; if(g.finalScore>=90) pred='A'; else if(g.finalScore>=80) pred='B'; else if(g.finalScore>=70) pred='C';
                             return (
                                 <tr key={s.id}>
                                     <td className="border border-black p-1 text-center">{idx+1}</td>
                                     <td className="border border-black p-1">{s.name}</td>
-                                    <td className="border border-black p-1 text-center">{st.h}</td>
-                                    <td className="border border-black p-1 text-center">{st.s}</td>
-                                    <td className="border border-black p-1 text-center">{st.i}</td>
-                                    <td className="border border-black p-1 text-center">{st.a}</td>
                                     <td className="border border-black p-1 text-center">{g.avgFormative}</td>
-                                    <td className="border border-black p-1 text-center">{g.avgSummative}</td>
+                                    <td className="border border-black p-1 text-center bg-yellow-50">{g.avgLM}</td>
+                                    <td className="border border-black p-1 text-center bg-yellow-50">{g.sts}</td>
+                                    <td className="border border-black p-1 text-center bg-yellow-50">{g.sas}</td>
                                     <td className="border border-black p-1 text-center">{g.avgAttitude}</td>
                                     <td className="border border-black p-1 text-center">{g.attendanceScore}</td>
                                     <td className="border border-black p-1 text-center font-bold bg-slate-100">{g.finalScore}</td>
