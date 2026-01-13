@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-// import * as XLSX from 'xlsx'; // HAPUS TANDA // DI DEPAN INI JIKA DI KOMPUTER
+import * as XLSX from 'xlsx'; // HAPUS TANDA // DI DEPAN INI JIKA DI KOMPUTER
 import { 
   User, Users, BookOpen, Calendar, 
   ClipboardList, PenTool, Heart, 
