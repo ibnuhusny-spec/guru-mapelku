@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import * as XLSX from 'xlsx'; // HAPUS TANDA // DI DEPAN INI JIKA DI KOMPUTER
+import * as XLSX from 'xlsx'; // JANGAN LUPA HAPUS TANDA // INI DI VS CODE
 import { 
   User, Users, BookOpen, Calendar, 
   ClipboardList, PenTool, Heart, 
@@ -20,15 +20,49 @@ const initialIdentity = {
   academicYear: '2025/2026',
 };
 
-const calculateFinalGrade = (student) => {
-  const formativeScores = Object.values(student.formative || {}).map(v => parseInt(v)||0);
-  const summativeScores = Object.values(student.summative || {}).map(v => parseInt(v)||0);
-  const avgFormative = formativeScores.length ? formativeScores.reduce((a,b)=>a+b,0)/formativeScores.length : 0;
-  const avgSummative = summativeScores.length ? summativeScores.reduce((a,b)=>a+b,0)/summativeScores.length : 0;
-  return Math.round((avgFormative * 0.4) + (avgSummative * 0.6));
+// Helper: Hitung Statistik Kehadiran
+const getAttendanceStats = (student) => {
+    // Hitung jumlah 'H' dari history harian
+    const historyValues = Object.values(student.attendanceHistory || {});
+    const h = historyValues.filter(val => val === 'H').length;
+    // Ambil rekap manual S, I, A
+    const s = parseInt(student.recap?.s || 0);
+    const i = parseInt(student.recap?.i || 0);
+    const a = parseInt(student.recap?.a || 0);
+    return { h, s, i, a, total: h + s + i + a };
 };
 
-// Format Tanggal Indonesia
+// --- RUMUS PENILAIAN BARU (4 PILAR) ---
+const calculateFinalGrade = (student) => {
+  // 1. Rata-rata Formatif (35%)
+  const formativeScores = Object.values(student.formative || {}).map(v => parseInt(v)||0);
+  const avgFormative = formativeScores.length ? formativeScores.reduce((a,b)=>a+b,0)/formativeScores.length : 0;
+
+  // 2. Rata-rata Sumatif (35%)
+  const summativeScores = Object.values(student.summative || {}).map(v => parseInt(v)||0);
+  const avgSummative = summativeScores.length ? summativeScores.reduce((a,b)=>a+b,0)/summativeScores.length : 0;
+
+  // 3. Rata-rata Sikap (20%)
+  const attitudeScores = Object.values(student.attitude || {}).map(v => parseInt(v)||0);
+  const avgAttitude = attitudeScores.length ? attitudeScores.reduce((a,b)=>a+b,0)/attitudeScores.length : 0;
+
+  // 4. Nilai Kehadiran (10%)
+  const { h, total } = getAttendanceStats(student);
+  // Jika belum ada data kehadiran, default 100 agar nilai tidak jatuh di awal semester
+  const attendanceScore = total > 0 ? (h / total) * 100 : 100;
+
+  // Kalkulasi Akhir
+  const finalScore = (avgFormative * 0.35) + (avgSummative * 0.35) + (avgAttitude * 0.20) + (attendanceScore * 0.10);
+
+  return {
+    avgFormative,
+    avgSummative,
+    avgAttitude,
+    attendanceScore,
+    finalScore: Math.round(finalScore)
+  };
+};
+
 const formatDateIndo = (dateString) => {
   if(!dateString) return '-';
   const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
@@ -50,7 +84,7 @@ const IdentitySection = ({ identity, setIdentity, classList, setClassList, selec
   };
 
   const removeClass = (cls) => {
-    if(window.confirm(`Yakin ingin menghapus kelas ${cls}? Data siswa di dalamnya juga akan terhapus permanen.`)) {
+    if(window.confirm(`Yakin ingin menghapus kelas ${cls}?`)) {
         const newList = classList.filter(c => c !== cls);
         setClassList(newList);
         if (selectedClass === cls) setSelectedClass(newList[0] || '');
@@ -58,7 +92,7 @@ const IdentitySection = ({ identity, setIdentity, classList, setClassList, selec
   };
 
   const handleResetAll = () => {
-    if(window.confirm("PERINGATAN KERAS!\n\nApakah Anda yakin ingin MENGHAPUS SEMUA DATA APLIKASI?\n(Identitas, Siswa, Nilai, Jurnal akan hilang selamanya).\n\nTindakan ini tidak bisa dibatalkan.")) {
+    if(window.confirm("PERINGATAN: HAPUS SEMUA DATA APLIKASI?")) {
         localStorage.clear();
         window.location.reload();
     }
@@ -68,48 +102,26 @@ const IdentitySection = ({ identity, setIdentity, classList, setClassList, selec
     <div className="space-y-6 animate-fadeIn">
       <div className="flex justify-between items-center border-b pb-2">
         <h2 className="text-2xl font-bold text-slate-800">1. Identitas & Pengaturan Kelas</h2>
-        <button onClick={handleResetAll} className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1 border border-red-200 px-2 py-1 rounded">
-            <Trash2 size={12}/> Reset Semua Data Aplikasi
-        </button>
+        <button onClick={handleResetAll} className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1 border border-red-200 px-2 py-1 rounded"><Trash2 size={12}/> Reset Data</button>
       </div>
-      
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-white p-6 rounded-lg shadow-sm border space-y-4">
           <h3 className="font-bold text-blue-600 flex items-center gap-2"><User size={18}/> Data Administrasi</h3>
           <div><label className="text-sm text-slate-500">Nama Sekolah</label><input type="text" className="w-full p-2 border rounded" value={identity.schoolName} onChange={e=>setIdentity({...identity, schoolName: e.target.value})} /></div>
-          <div><label className="text-sm text-slate-500">Nama Kepala Sekolah</label><input type="text" className="w-full p-2 border rounded" placeholder="Nama Kepala Sekolah beserta gelar" value={identity.principalName} onChange={e=>setIdentity({...identity, principalName: e.target.value})} /></div>
+          <div><label className="text-sm text-slate-500">Nama Kepala Sekolah</label><input type="text" className="w-full p-2 border rounded" placeholder="Nama & Gelar" value={identity.principalName} onChange={e=>setIdentity({...identity, principalName: e.target.value})} /></div>
           <div><label className="text-sm text-slate-500">Mata Pelajaran</label><input type="text" className="w-full p-2 border rounded" value={identity.subject} onChange={e=>setIdentity({...identity, subject: e.target.value})} /></div>
           <div><label className="text-sm text-slate-500">Nama Guru</label><input type="text" className="w-full p-2 border rounded" value={identity.teacherName} onChange={e=>setIdentity({...identity, teacherName: e.target.value})} /></div>
           <div><label className="text-sm text-slate-500">NIP</label><input type="text" className="w-full p-2 border rounded" value={identity.nip} onChange={e=>setIdentity({...identity, nip: e.target.value})} /></div>
           <div className="grid grid-cols-2 gap-2">
-            <div><label className="text-sm text-slate-500">Semester</label>
-              <select className="w-full p-2 border rounded" value={identity.semester} onChange={e=>setIdentity({...identity, semester: e.target.value})}>
-                <option>Ganjil</option><option>Genap</option>
-              </select>
-            </div>
+            <div><label className="text-sm text-slate-500">Semester</label><select className="w-full p-2 border rounded" value={identity.semester} onChange={e=>setIdentity({...identity, semester: e.target.value})}><option>Ganjil</option><option>Genap</option></select></div>
             <div><label className="text-sm text-slate-500">Tahun Pelajaran</label><input type="text" className="w-full p-2 border rounded" value={identity.academicYear} onChange={e=>setIdentity({...identity, academicYear: e.target.value})} /></div>
           </div>
         </div>
-
         <div className="bg-white p-6 rounded-lg shadow-sm border space-y-4">
           <h3 className="font-bold text-green-600 flex items-center gap-2"><Users size={18}/> Manajemen Kelas</h3>
-          <p className="text-sm text-slate-500">Tambahkan daftar kelas yang Anda ampu.</p>
-          <div className="flex gap-2">
-            <input type="text" className="flex-1 p-2 border rounded" placeholder="Nama Kelas (Contoh: X-A)" value={newClassInput} onChange={e=>setNewClassInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && addClass()} />
-            <button onClick={addClass} className="bg-green-600 text-white px-4 rounded hover:bg-green-700"><Plus/></button>
-          </div>
-          <div className="flex flex-wrap gap-2 mt-4">
-            {classList.length === 0 && <span className="text-slate-400 text-sm italic">Belum ada kelas.</span>}
-            {classList.map(cls => (
-              <div key={cls} className="bg-slate-100 px-3 py-1 rounded-full flex items-center gap-2 border border-slate-300">
-                <span className="font-medium">{cls}</span>
-                <button onClick={() => removeClass(cls)} className="text-red-500 hover:text-red-700"><Trash2 size={14}/></button>
-              </div>
-            ))}
-          </div>
-          <div className="mt-4 p-3 bg-blue-50 text-blue-800 text-sm rounded flex items-center gap-2">
-            <Database size={16}/> <strong>Status:</strong> Data tersimpan otomatis di browser ini.
-          </div>
+          <div className="flex gap-2"><input type="text" className="flex-1 p-2 border rounded" placeholder="Nama Kelas (Contoh: X-A)" value={newClassInput} onChange={e=>setNewClassInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && addClass()} /><button onClick={addClass} className="bg-green-600 text-white px-4 rounded hover:bg-green-700"><Plus/></button></div>
+          <div className="flex flex-wrap gap-2 mt-4">{classList.map(cls => (<div key={cls} className="bg-slate-100 px-3 py-1 rounded-full flex items-center gap-2 border border-slate-300"><span className="font-medium">{cls}</span><button onClick={() => removeClass(cls)} className="text-red-500 hover:text-red-700"><Trash2 size={14}/></button></div>))}</div>
+          <div className="mt-4 p-3 bg-blue-50 text-blue-800 text-sm rounded flex items-center gap-2"><Database size={16}/> <strong>Status:</strong> Data tersimpan otomatis di browser ini.</div>
         </div>
       </div>
     </div>
@@ -123,36 +135,20 @@ const AttendanceSection = ({ selectedClass, students, onUpdateStudents, selected
 
   const addStudent = () => {
     if (!newStudent.name) return;
-    const updated = [...students, { 
-      ...newStudent, 
-      id: Date.now(),
-      attendanceHistory: {},
-      recap: { s: 0, i: 0, a: 0 } 
-    }];
+    const updated = [...students, { ...newStudent, id: Date.now(), attendanceHistory: {}, recap: { s: 0, i: 0, a: 0 } }];
     onUpdateStudents(updated);
     setNewStudent({ name: '', nim: '', nisn: '', gender: 'L' });
   };
 
   const updateDailyAttendance = (id, status) => {
-    const updated = students.map(s => {
-        if(s.id === id) {
-            const newHistory = { ...s.attendanceHistory, [selectedDate]: status };
-            return { ...s, attendanceHistory: newHistory };
-        }
-        return s;
-    });
+    const updated = students.map(s => s.id === id ? { ...s, attendanceHistory: { ...s.attendanceHistory, [selectedDate]: status } } : s);
     onUpdateStudents(updated);
   };
 
-  // --- FITUR BARU: HADIR SEMUA ---
   const handleMarkAllPresent = () => {
     if (students.length === 0) return;
     if (confirm(`Tandai semua ${students.length} siswa sebagai HADIR pada tanggal ${selectedDate}?`)) {
-        const updated = students.map(s => ({
-            ...s,
-            attendanceHistory: { ...s.attendanceHistory, [selectedDate]: 'H' }
-        }));
-        onUpdateStudents(updated);
+        onUpdateStudents(students.map(s => ({ ...s, attendanceHistory: { ...s.attendanceHistory, [selectedDate]: 'H' } })));
     }
   };
 
@@ -163,8 +159,7 @@ const AttendanceSection = ({ selectedClass, students, onUpdateStudents, selected
 
   const handleDownloadTemplate = () => {
     if (typeof XLSX === 'undefined') { alert("Fitur Excel butuh 'npm install xlsx' di komputer lokal."); return; }
-    const templateData = [{ No: 1, NISN: "123", NIM: "101", Nama: "Siswa A", Gender: "L" }];
-    const ws = XLSX.utils.json_to_sheet(templateData);
+    const ws = XLSX.utils.json_to_sheet([{ No: 1, NISN: "123", NIM: "101", Nama: "Siswa A", Gender: "L" }]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Siswa");
     XLSX.writeFile(wb, "Template_Siswa.xlsx");
@@ -176,20 +171,9 @@ const AttendanceSection = ({ selectedClass, students, onUpdateStudents, selected
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (evt) => {
-      const bstr = evt.target.result;
-      const wb = XLSX.read(bstr, { type: 'binary' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const data = XLSX.utils.sheet_to_json(ws);
-      const imported = data.map((row, i) => ({
-        id: Date.now() + i,
-        name: row['Nama'] || 'No Name',
-        nisn: row['NISN'] || '-',
-        nim: row['NIM'] || '-',
-        gender: row['Gender'] || 'L',
-        attendanceHistory: {},
-        recap: { s: 0, i: 0, a: 0 },
-        formative: {}, summative: {}, attitude: {}
-      }));
+      const wb = XLSX.read(evt.target.result, { type: 'binary' });
+      const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+      const imported = data.map((row, i) => ({ id: Date.now() + i, name: row['Nama']||'NoName', nisn: row['NISN']||'-', nim: row['NIM']||'-', gender: row['Gender']||'L', attendanceHistory: {}, recap: { s: 0, i: 0, a: 0 }, formative: {}, summative: {}, attitude: {} }));
       if(confirm(`Import ${imported.length} siswa?`)) onUpdateStudents([...students, ...imported]);
     };
     reader.readAsBinaryString(file);
@@ -199,65 +183,41 @@ const AttendanceSection = ({ selectedClass, students, onUpdateStudents, selected
   const handleExportAttendance = () => {
     if (typeof XLSX === 'undefined') { alert("Fitur Excel belum aktif."); return; }
     const dataToExport = students.map((s, idx) => ({
-        No: idx + 1,
-        NISN: s.nisn,
-        Nama: s.name,
-        Gender: s.gender,
+        No: idx + 1, NISN: s.nisn, Nama: s.name, Gender: s.gender,
         [`Hadir (${selectedDate})`]: s.attendanceHistory?.[selectedDate] === 'H' ? 'Hadir' : 'Tidak',
-        'Total Sakit': s.recap?.s || 0,
-        'Total Izin': s.recap?.i || 0,
-        'Total Alpha': s.recap?.a || 0
+        'Total Sakit': s.recap?.s || 0, 'Total Izin': s.recap?.i || 0, 'Total Alpha': s.recap?.a || 0
     }));
     const ws = XLSX.utils.json_to_sheet(dataToExport);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Presensi");
-    XLSX.writeFile(wb, `Presensi_Kelas_${selectedClass}_${selectedDate}.xlsx`);
+    XLSX.writeFile(wb, `Presensi_${selectedClass}_${selectedDate}.xlsx`);
   };
 
   return (
     <div className="space-y-6 animate-fadeIn">
       <div className="flex justify-between items-center border-b pb-2">
-         <div>
-            <h2 className="text-2xl font-bold text-slate-800">2. Daftar Hadir (Presensi)</h2>
-            <p className="text-sm text-blue-600 font-medium mt-1 flex items-center gap-2">
-                <Calendar size={14}/> Tanggal: <span className="underline font-bold">{formatDateIndo(selectedDate)}</span>
-            </p>
-         </div>
-         <div className="flex gap-2 items-center">
-             {/* TOMBOL HADIR SEMUA */}
-             <button onClick={handleMarkAllPresent} className="flex items-center gap-2 bg-blue-100 text-blue-700 px-4 py-2 rounded-lg font-bold hover:bg-blue-200 transition-colors">
-                <CheckSquare size={18}/> Hadir Semua
-             </button>
-             <div className="bg-blue-100 px-4 py-2 rounded-lg font-bold text-blue-800">{selectedClass}</div>
-         </div>
+         <div><h2 className="text-2xl font-bold text-slate-800">2. Daftar Hadir (Presensi)</h2><p className="text-sm text-blue-600 font-medium mt-1"><Calendar size={14} className="inline"/> {formatDateIndo(selectedDate)}</p></div>
+         <div className="flex gap-2 items-center"><button onClick={handleMarkAllPresent} className="bg-blue-100 text-blue-700 px-4 py-2 rounded-lg font-bold hover:bg-blue-200"><CheckSquare size={18} className="inline"/> Hadir Semua</button><div className="bg-blue-100 px-4 py-2 rounded-lg font-bold text-blue-800">{selectedClass}</div></div>
       </div>
-
-      <div className="bg-white p-3 rounded-lg border border-slate-200 flex flex-wrap justify-between items-center mb-4 shadow-sm">
-        <div className="text-sm text-slate-600 font-medium flex items-center gap-2"><Users size={18}/> Manajemen Data Siswa</div>
+      <div className="bg-white p-3 rounded-lg border flex justify-between mb-4 shadow-sm">
+        <div className="text-sm font-medium flex gap-2"><Users size={18}/> Manajemen Data</div>
         <div className="flex gap-2">
-            <button onClick={handleDownloadTemplate} className="bg-slate-100 border border-slate-300 text-slate-600 px-3 py-1 rounded text-xs hover:bg-slate-200">1. Download Template</button>
-            <label className="bg-green-600 text-white px-3 py-1 rounded text-xs cursor-pointer hover:bg-green-700 flex items-center gap-1"><Upload size={14}/> 2. Import Siswa<input type="file" className="hidden" onChange={handleImportExcel}/></label>
-            <div className="w-px bg-slate-300 mx-1"></div>
-            <button onClick={handleExportAttendance} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 flex items-center gap-1"><Download size={14}/> Export Presensi</button>
+            <button onClick={handleDownloadTemplate} className="bg-slate-100 border px-3 py-1 rounded text-xs">1. Template</button>
+            <label className="bg-green-600 text-white px-3 py-1 rounded text-xs cursor-pointer flex gap-1"><Upload size={14}/> 2. Import<input type="file" className="hidden" onChange={handleImportExcel}/></label>
+            <button onClick={handleExportAttendance} className="bg-blue-600 text-white px-3 py-1 rounded text-xs flex gap-1"><Download size={14}/> Export Hari Ini</button>
         </div>
       </div>
-
       <div className="bg-slate-50 p-3 rounded border flex gap-2 items-end mb-4">
         <input placeholder="Nama Siswa" value={newStudent.name} onChange={e=>setNewStudent({...newStudent, name:e.target.value})} className="flex-1 p-2 border rounded text-sm"/>
         <button onClick={addStudent} className="bg-blue-600 text-white p-2 rounded"><Plus/></button>
       </div>
-
       <div className="overflow-x-auto bg-white border rounded shadow-sm">
         <table className="w-full text-sm text-left">
           <thead className="bg-slate-800 text-white uppercase text-xs">
             <tr>
-              <th className="p-3">No</th>
-              <th className="p-3">Nama Siswa</th>
-              <th className="p-3 text-center bg-blue-900 border-x border-blue-700">HADIR<br/><span className="text-[9px] opacity-75">{selectedDate}</span></th>
-              <th className="p-3 text-center w-12 bg-yellow-600">Sakit</th>
-              <th className="p-3 text-center w-12 bg-yellow-600">Izin</th>
-              <th className="p-3 text-center w-12 bg-red-600">Alpha</th>
-              <th className="p-3 text-center w-10">Act</th>
+              <th className="p-3">No</th><th className="p-3">Nama Siswa</th>
+              <th className="p-3 text-center bg-blue-900 border-x">HADIR<br/><span className="text-[9px] opacity-75">{selectedDate}</span></th>
+              <th className="p-3 text-center w-12 bg-yellow-600">Sakit</th><th className="p-3 text-center w-12 bg-yellow-600">Izin</th><th className="p-3 text-center w-12 bg-red-600">Alpha</th><th className="p-3 text-center w-10">Act</th>
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -267,9 +227,7 @@ const AttendanceSection = ({ selectedClass, students, onUpdateStudents, selected
                   <tr key={s.id} className="hover:bg-slate-50">
                     <td className="p-3 text-center">{idx+1}</td>
                     <td className="p-3 font-medium">{s.name} <br/><span className="text-xs text-slate-400">{s.nisn}</span></td>
-                    <td className="p-3 text-center bg-blue-50 border-x">
-                      <input type="checkbox" checked={isPresent} onChange={(e)=>updateDailyAttendance(s.id, e.target.checked ? 'H' : null)} className="w-6 h-6 accent-blue-600 cursor-pointer"/>
-                    </td>
+                    <td className="p-3 text-center bg-blue-50 border-x"><input type="checkbox" checked={isPresent} onChange={(e)=>updateDailyAttendance(s.id, e.target.checked ? 'H' : null)} className="w-6 h-6 accent-blue-600 cursor-pointer"/></td>
                     <td className="p-1"><input type="number" value={s.recap?.s||0} onChange={e=>updateRecap(s.id,'s',e.target.value)} className="w-full text-center border-none bg-transparent"/></td>
                     <td className="p-1"><input type="number" value={s.recap?.i||0} onChange={e=>updateRecap(s.id,'i',e.target.value)} className="w-full text-center border-none bg-transparent"/></td>
                     <td className="p-1"><input type="number" value={s.recap?.a||0} onChange={e=>updateRecap(s.id,'a',e.target.value)} className="w-full text-center border-none bg-transparent"/></td>
@@ -292,15 +250,12 @@ const JournalSection = ({ selectedClass, curriculumData, journalData, setJournal
       setEntry({ ...entry, activity: '', reflection: '', followup: '' }); 
   };
 
-  const filteredJournal = journalData.filter(j => 
-    (j.date === selectedDate) && (!selectedClass || j.class === selectedClass)
-  );
+  const filteredJournal = journalData.filter(j => (j.date === selectedDate) && (!selectedClass || j.class === selectedClass));
 
   const handleExportJournal = () => {
     if (typeof XLSX === 'undefined') { alert("Fitur Excel belum aktif."); return; }
-    if (filteredJournal.length === 0) { alert("Tidak ada data jurnal untuk diexport."); return; }
-    const dataToExport = filteredJournal.map((j, idx) => ({ No: idx + 1, Tanggal: j.date, Jam: j.time, Kelas: j.class, Materi: j.scope, TP: j.tp, Kegiatan: j.activity, Refleksi: j.reflection }));
-    const ws = XLSX.utils.json_to_sheet(dataToExport);
+    if (filteredJournal.length === 0) { alert("Tidak ada data jurnal."); return; }
+    const ws = XLSX.utils.json_to_sheet(filteredJournal.map((j, idx) => ({ No: idx + 1, Tanggal: j.date, Jam: j.time, Kelas: j.class, Materi: j.scope, TP: j.tp, Kegiatan: j.activity, Refleksi: j.reflection })));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Jurnal");
     XLSX.writeFile(wb, `Jurnal_${selectedDate}.xlsx`);
@@ -349,16 +304,11 @@ const AssessmentSection = ({ type, selectedClass, students, onUpdateStudents }) 
     if (!selectedClass) return <div className="p-10 text-center text-slate-500">Pilih Kelas Terlebih Dahulu.</div>;
     const titleMap = { formative: 'Formatif', summative: 'Sumatif', attitude: 'Sikap & Keaktifan' };
     
-    // --- UPDATE KOLOM 10 ---
+    // KOLOM 10
     let columns = [];
-    if (type === 'formative') {
-        columns = Array.from({length: 10}, (_, i) => `TP${i+1}`); // TP1 - TP10
-    } else if (type === 'summative') {
-        const lmCols = Array.from({length: 10}, (_, i) => `LM${i+1}`); // LM1 - LM10
-        columns = [...lmCols, 'STS', 'SAS'];
-    } else {
-        columns = ['Religius', 'Jujur', 'Disiplin', 'Kerjasama', 'Kreatif'];
-    }
+    if (type === 'formative') columns = Array.from({length: 10}, (_, i) => `TP${i+1}`);
+    else if (type === 'summative') columns = [...Array.from({length: 10}, (_, i) => `LM${i+1}`), 'STS', 'SAS'];
+    else columns = ['Religius', 'Jujur', 'Disiplin', 'Kerjasama', 'Kreatif'];
 
     const updateScore = (id, col, val) => {
         const student = students.find(s => s.id === id);
@@ -379,13 +329,18 @@ const ReportSection = ({ identity, selectedClass, students, selectedDate }) => {
     const handleExportReport = () => {
         if (typeof XLSX === 'undefined') { alert("Fitur Excel belum aktif."); return; }
         const dataToExport = students.map((s, idx) => {
-            const formativeScores = Object.values(s.formative || {}).map(v => parseInt(v)||0);
-            const summativeScores = Object.values(s.summative || {}).map(v => parseInt(v)||0);
-            const avgF = formativeScores.length ? (formativeScores.reduce((a,b)=>a+b,0)/formativeScores.length).toFixed(0) : 0;
-            const avgS = summativeScores.length ? (summativeScores.reduce((a,b)=>a+b,0)/summativeScores.length).toFixed(0) : 0;
-            const na = calculateFinalGrade(s);
-            let pred = 'D'; if(na >= 90) pred = 'A'; else if(na >= 80) pred = 'B'; else if(na >= 70) pred = 'C';
-            return { No: idx + 1, NISN: s.nisn, Nama: s.name, 'Rata Formatif': avgF, 'Rata Sumatif': avgS, 'Nilai Akhir': na, Predikat: pred, Keterangan: na >= 75 ? 'Tuntas' : 'Belum Tuntas' };
+            const grade = calculateFinalGrade(s);
+            const stats = getAttendanceStats(s);
+            let pred = 'D'; if(grade.finalScore >= 90) pred = 'A'; else if(grade.finalScore >= 80) pred = 'B'; else if(grade.finalScore >= 70) pred = 'C';
+            
+            return { 
+                No: idx + 1, NISN: s.nisn, Nama: s.name, 
+                Hadir: stats.h, Sakit: stats.s, Izin: stats.i, Alpha: stats.a,
+                'Rata Formatif': grade.avgFormative, 'Rata Sumatif': grade.avgSummative, 
+                'Nilai Sikap': grade.avgAttitude, 'Nilai Hadir': grade.attendanceScore.toFixed(0),
+                'Nilai Akhir': grade.finalScore, Predikat: pred, 
+                Keterangan: grade.finalScore >= 75 ? 'Tuntas' : 'Belum Tuntas' 
+            };
         });
         const ws = XLSX.utils.json_to_sheet(dataToExport);
         const wb = XLSX.utils.book_new();
@@ -393,61 +348,20 @@ const ReportSection = ({ identity, selectedClass, students, selectedDate }) => {
         XLSX.writeFile(wb, `Leger_Nilai_Kelas_${selectedClass}.xlsx`);
     };
 
-    // --- EXPORT WORD MANUAL ---
     const handleExportWord = () => {
-        const header = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>Laporan Nilai</title><style>table{width:100%;border-collapse:collapse;} td,th{border:1px solid black;padding:5px;}</style></head><body>`;
-        const footer = "</body></html>";
-        
-        // Construct HTML Table manual agar rapi di Word
+        const header = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>Laporan Nilai</title><style>table{width:100%;border-collapse:collapse;font-size:12px;} td,th{border:1px solid black;padding:4px;}</style></head><body>`;
         let tableHTML = `
-            <div style="text-align:center; font-family:Arial;">
-                <h2>REKAPITULASI NILAI RAPOR</h2>
-                <p>Tahun: ${identity.academicYear} | Semester: ${identity.semester} | Kelas: ${selectedClass}</p>
-                <p>Guru: ${identity.teacherName} | Mapel: ${identity.subject}</p>
-            </div>
-            <br/>
-            <table>
-                <thead>
-                    <tr style="background:#ddd;">
-                        <th>No</th><th>NISN</th><th>Nama Siswa</th><th>Rata Formatif</th><th>Rata Sumatif</th><th>NA</th><th>Pred</th><th>Ket</th>
-                    </tr>
-                </thead>
-                <tbody>
+            <div style="text-align:center; font-family:Arial;"><h2>REKAPITULASI NILAI RAPOR</h2><p>Tahun: ${identity.academicYear} | Semester: ${identity.semester} | Kelas: ${selectedClass}</p><p>Guru: ${identity.teacherName}</p></div><br/>
+            <table><thead><tr style="background:#eee;"><th>No</th><th>NISN</th><th>Nama Siswa</th><th>H</th><th>S</th><th>I</th><th>A</th><th>R. Form</th><th>R. Sum</th><th>N. Sikap</th><th>N. Hadir</th><th>NA</th><th>Pred</th><th>Ket</th></tr></thead><tbody>
         `;
-
         students.forEach((s, idx) => {
-            const formativeScores = Object.values(s.formative || {}).map(v => parseInt(v)||0);
-            const summativeScores = Object.values(s.summative || {}).map(v => parseInt(v)||0);
-            const avgF = formativeScores.length ? (formativeScores.reduce((a,b)=>a+b,0)/formativeScores.length).toFixed(0) : 0;
-            const avgS = summativeScores.length ? (summativeScores.reduce((a,b)=>a+b,0)/summativeScores.length).toFixed(0) : 0;
-            const na = calculateFinalGrade(s);
-            let pred = 'D'; if(na >= 90) pred = 'A'; else if(na >= 80) pred = 'B'; else if(na >= 70) pred = 'C';
-            
-            tableHTML += `
-                <tr>
-                    <td style="text-align:center">${idx+1}</td>
-                    <td>${s.nisn}</td>
-                    <td>${s.name}</td>
-                    <td style="text-align:center">${avgF}</td>
-                    <td style="text-align:center">${avgS}</td>
-                    <td style="text-align:center"><b>${na}</b></td>
-                    <td style="text-align:center">${pred}</td>
-                    <td style="text-align:center">${na >= 75 ? 'Tuntas' : 'Belum'}</td>
-                </tr>
-            `;
+            const stats = getAttendanceStats(s);
+            const grade = calculateFinalGrade(s);
+            let pred = 'D'; if(grade.finalScore >= 90) pred = 'A'; else if(grade.finalScore >= 80) pred = 'B'; else if(grade.finalScore >= 70) pred = 'C';
+            tableHTML += `<tr><td style="text-align:center">${idx+1}</td><td>${s.nisn}</td><td>${s.name}</td><td style="text-align:center">${stats.h}</td><td style="text-align:center">${stats.s}</td><td style="text-align:center">${stats.i}</td><td style="text-align:center">${stats.a}</td><td style="text-align:center">${grade.avgFormative}</td><td style="text-align:center">${grade.avgSummative}</td><td style="text-align:center">${grade.avgAttitude}</td><td style="text-align:center">${grade.attendanceScore.toFixed(0)}</td><td style="text-align:center"><b>${grade.finalScore}</b></td><td style="text-align:center">${pred}</td><td style="text-align:center">${grade.finalScore >= 75 ? 'Tuntas' : 'Belum'}</td></tr>`;
         });
-
-        tableHTML += `</tbody></table><br/><br/>
-        <table style="border:none; width:100%;">
-            <tr style="border:none;">
-                <td style="border:none; text-align:center;">Mengetahui,<br/>Kepala Sekolah<br/><br/><br/><u>${identity.principalName || '___________________'}</u></td>
-                <td style="border:none;"></td>
-                <td style="border:none; text-align:center;">${formatDateIndo(selectedDate)}<br/>Guru Mapel<br/><br/><br/><u>${identity.teacherName}</u><br/>NIP. ${identity.nip}</td>
-            </tr>
-        </table>`;
-
-        const sourceHTML = header + tableHTML + footer;
-        const source = 'data:application/vnd.ms-word;charset=utf-8,' + encodeURIComponent(sourceHTML);
+        tableHTML += `</tbody></table><br/><br/><table style="border:none; width:100%;"><tr style="border:none;"><td style="border:none; text-align:center;">Mengetahui,<br/>Kepala Sekolah<br/><br/><br/><u>${identity.principalName || '___________________'}</u></td><td style="border:none;"></td><td style="border:none; text-align:center;">${formatDateIndo(selectedDate)}<br/>Guru Mapel<br/><br/><br/><u>${identity.teacherName}</u><br/>NIP. ${identity.nip}</td></tr></table>`;
+        const source = 'data:application/vnd.ms-word;charset=utf-8,' + encodeURIComponent(header + tableHTML + "</body></html>");
         const fileDownload = document.createElement("a");
         document.body.appendChild(fileDownload);
         fileDownload.href = source;
@@ -460,60 +374,25 @@ const ReportSection = ({ identity, selectedClass, students, selectedDate }) => {
         <div className="space-y-6 animate-fadeIn">
             <div className="flex justify-between items-center border-b pb-2 print:hidden">
                 <h2 className="text-2xl font-bold text-slate-800">8. Kelola Nilai Rapor</h2>
-                <div className="flex gap-2">
-                    <button onClick={handleExportWord} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
-                        <FileText size={16}/> Export Word (.doc)
-                    </button>
-                    <button onClick={handleExportReport} className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
-                        <FileSpreadsheet size={16}/> Export Excel
-                    </button>
-                    <button onClick={()=>window.print()} className="flex items-center gap-2 bg-slate-800 text-white px-4 py-2 rounded hover:bg-slate-900">
-                        <Printer size={16}/> Cetak
-                    </button>
-                </div>
+                <div className="flex gap-2"><button onClick={handleExportWord} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"><FileText size={16}/> Word</button><button onClick={handleExportReport} className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"><FileSpreadsheet size={16}/> Excel</button><button onClick={()=>window.print()} className="flex items-center gap-2 bg-slate-800 text-white px-4 py-2 rounded hover:bg-slate-900"><Printer size={16}/> Cetak</button></div>
             </div>
             <div className="hidden print:block text-center mb-6"><h1 className="text-xl font-bold">REKAPITULASI NILAI RAPOR</h1><p>Tahun Pelajaran {identity.academicYear} - Semester {identity.semester}</p><p>Kelas: {selectedClass}</p></div>
-            <div className="overflow-x-auto bg-white border rounded shadow-sm"><table className="w-full text-sm border-collapse border border-slate-300"><thead className="bg-slate-800 text-white print:bg-white print:text-black"><tr><th className="border p-2">No</th><th className="border p-2 text-left">NISN</th><th className="border p-2 text-left">Nama Siswa</th><th className="border p-2 w-16 text-center">Rata Formatif</th><th className="border p-2 w-16 text-center">Rata Sumatif</th><th className="border p-2 w-16 text-center bg-blue-900 text-white print:text-black print:bg-slate-200">NA</th><th className="border p-2 w-24 text-center">Predikat</th><th className="border p-2 w-24 text-center">Ket</th></tr></thead><tbody>{students.map((s, idx) => { const formativeScores = Object.values(s.formative || {}).map(v => parseInt(v)||0); const summativeScores = Object.values(s.summative || {}).map(v => parseInt(v)||0); const avgF = formativeScores.length ? (formativeScores.reduce((a,b)=>a+b,0)/formativeScores.length).toFixed(0) : 0; const avgS = summativeScores.length ? (summativeScores.reduce((a,b)=>a+b,0)/summativeScores.length).toFixed(0) : 0; const na = calculateFinalGrade(s); let pred = 'D'; if(na >= 90) pred = 'A'; else if(na >= 80) pred = 'B'; else if(na >= 70) pred = 'C'; return (<tr key={s.id} className="print:border-black"><td className="border p-2 text-center">{idx+1}</td><td className="border p-2">{s.nisn}</td><td className="border p-2 font-medium">{s.name}</td><td className="border p-2 text-center">{avgF}</td><td className="border p-2 text-center">{avgS}</td><td className="border p-2 text-center font-bold bg-slate-50">{na}</td><td className="border p-2 text-center font-bold">{pred}</td><td className="border p-2 text-center text-xs">{na >= 75 ? <span className="text-green-600">Tuntas</span> : <span className="text-red-600">Belum</span>}</td></tr>)})}</tbody></table></div>
+            <div className="overflow-x-auto bg-white border rounded shadow-sm"><table className="w-full text-sm border-collapse border border-slate-300"><thead className="bg-slate-800 text-white print:bg-white print:text-black"><tr><th className="border p-2">No</th><th className="border p-2 text-left">Nama Siswa</th><th className="border p-2 w-8 bg-blue-900">H</th><th className="border p-2 w-8 bg-yellow-600">S</th><th className="border p-2 w-8 bg-yellow-600">I</th><th className="border p-2 w-8 bg-red-600">A</th><th className="border p-2 w-16">R. Form</th><th className="border p-2 w-16">R. Sum</th><th className="border p-2 w-16 bg-green-700">N. Sikap</th><th className="border p-2 w-16 bg-blue-700">N. Hadir</th><th className="border p-2 w-16 font-bold bg-slate-100 text-black">NA</th><th className="border p-2 w-16">Pred</th><th className="border p-2 w-20">Ket</th></tr></thead><tbody>{students.map((s, idx) => { const stats = getAttendanceStats(s); const grade = calculateFinalGrade(s); let pred = 'D'; if(grade.finalScore >= 90) pred = 'A'; else if(grade.finalScore >= 80) pred = 'B'; else if(grade.finalScore >= 70) pred = 'C'; return (<tr key={s.id} className="print:border-black"><td className="border p-2 text-center">{idx+1}</td><td className="border p-2 font-medium">{s.name}</td><td className="border p-2 text-center bg-blue-50">{stats.h}</td><td className="border p-2 text-center">{stats.s}</td><td className="border p-2 text-center">{stats.i}</td><td className="border p-2 text-center">{stats.a}</td><td className="border p-2 text-center">{grade.avgFormative}</td><td className="border p-2 text-center">{grade.avgSummative}</td><td className="border p-2 text-center font-bold text-green-700">{grade.avgAttitude}</td><td className="border p-2 text-center font-bold text-blue-700">{grade.attendanceScore.toFixed(0)}</td><td className="border p-2 text-center font-bold bg-slate-100">{grade.finalScore}</td><td className="border p-2 text-center font-bold">{pred}</td><td className="border p-2 text-center text-xs">{grade.finalScore >= 75 ? <span className="text-green-600">Tuntas</span> : <span className="text-red-600">Belum</span>}</td></tr>)})}</tbody></table></div>
             <div className="grid grid-cols-3 mt-12 page-break-inside-avoid text-sm"><div className="text-center"><p>Mengetahui,</p><p className="mb-16">Kepala Sekolah</p><p className="underline font-bold">{identity.principalName || '___________________'}</p></div><div></div><div className="text-center"><p>Tanggal Cetak: {formatDateIndo(selectedDate)}</p><p>Guru Mata Pelajaran</p><p className="mb-16 font-bold underline">{identity.teacherName}</p><p>NIP. {identity.nip}</p></div></div>
         </div>
     )
 };
 
-// --- MAIN APP ---
-
 const App = () => {
   const [activeTab, setActiveTab] = useState('identity');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-
-  const [identity, setIdentity] = useState(() => {
-    const saved = localStorage.getItem('guru_identity');
-    return saved ? JSON.parse(saved) : initialIdentity;
-  });
-
-  const [classList, setClassList] = useState(() => {
-    const saved = localStorage.getItem('guru_classList');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const [selectedClass, setSelectedClass] = useState(() => {
-     return localStorage.getItem('guru_selectedClass') || '';
-  });
-
-  const [studentsData, setStudentsData] = useState(() => {
-    const saved = localStorage.getItem('guru_studentsData');
-    return saved ? JSON.parse(saved) : {};
-  });
-
-  const [curriculumData, setCurriculumData] = useState(() => {
-    const saved = localStorage.getItem('guru_curriculumData');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const [journalData, setJournalData] = useState(() => {
-    const saved = localStorage.getItem('guru_journalData');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [identity, setIdentity] = useState(() => { const saved = localStorage.getItem('guru_identity'); return saved ? JSON.parse(saved) : initialIdentity; });
+  const [classList, setClassList] = useState(() => { const saved = localStorage.getItem('guru_classList'); return saved ? JSON.parse(saved) : []; });
+  const [selectedClass, setSelectedClass] = useState(() => localStorage.getItem('guru_selectedClass') || '');
+  const [studentsData, setStudentsData] = useState(() => { const saved = localStorage.getItem('guru_studentsData'); return saved ? JSON.parse(saved) : {}; });
+  const [curriculumData, setCurriculumData] = useState(() => { const saved = localStorage.getItem('guru_curriculumData'); return saved ? JSON.parse(saved) : []; });
+  const [journalData, setJournalData] = useState(() => { const saved = localStorage.getItem('guru_journalData'); return saved ? JSON.parse(saved) : []; });
 
   useEffect(() => { localStorage.setItem('guru_identity', JSON.stringify(identity)); }, [identity]);
   useEffect(() => { localStorage.setItem('guru_classList', JSON.stringify(classList)); }, [classList]);
@@ -528,10 +407,7 @@ const App = () => {
   return (
     <div className="flex h-screen bg-slate-100 font-sans overflow-hidden">
       <aside className={`bg-slate-900 text-white flex flex-col transition-all duration-300 ${sidebarOpen ? 'w-64' : 'w-20'} print:hidden`}>
-        <div className="p-4 border-b border-slate-700 flex items-center justify-between">
-          {sidebarOpen && <h1 className="font-bold text-lg tracking-wider">GURU<span className="text-blue-400">APP</span></h1>}
-          <button onClick={()=>setSidebarOpen(!sidebarOpen)} className="p-1 hover:bg-slate-800 rounded"><Menu/></button>
-        </div>
+        <div className="p-4 border-b border-slate-700 flex items-center justify-between">{sidebarOpen && <h1 className="font-bold text-lg tracking-wider">GURU<span className="text-blue-400">APP</span></h1>}<button onClick={()=>setSidebarOpen(!sidebarOpen)} className="p-1 hover:bg-slate-800 rounded"><Menu/></button></div>
         <nav className="flex-1 overflow-y-auto py-4">
           <NavItem icon={<User/>} label="Identitas" active={activeTab==='identity'} onClick={()=>setActiveTab('identity')} open={sidebarOpen}/>
           <NavItem icon={<Users/>} label="Daftar Hadir" active={activeTab==='attendance'} onClick={()=>setActiveTab('attendance')} open={sidebarOpen}/>
@@ -548,13 +424,7 @@ const App = () => {
       <main className="flex-1 flex flex-col overflow-hidden">
         <header className="bg-white shadow-sm border-b p-4 flex flex-col md:flex-row justify-between items-center z-10 print:hidden gap-4">
             <div><h2 className="text-xl font-bold text-slate-800 uppercase">{identity.subject || 'Mata Pelajaran'}</h2><p className="text-xs text-slate-500">{identity.teacherName}</p></div>
-            <div className="flex flex-wrap items-center gap-4">
-                <div className="flex items-center gap-2 bg-yellow-50 px-3 py-1 rounded border border-yellow-200">
-                    <CalendarDays size={18} className="text-yellow-700"/>
-                    <div className="flex flex-col"><span className="text-[10px] text-yellow-800 font-bold uppercase">Tanggal Aktif</span><input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="bg-transparent text-sm font-bold text-slate-700 outline-none cursor-pointer"/></div>
-                </div>
-                <div className="relative"><select className="appearance-none bg-blue-600 text-white font-bold py-2 pl-4 pr-10 rounded-lg cursor-pointer focus:outline-none hover:bg-blue-700" value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)}>{classList.length === 0 && <option value="">(Buat Kelas Dulu)</option>}{classList.map(c => <option key={c} value={c}>{c}</option>)}</select><ChevronDown className="absolute right-3 top-3 text-white pointer-events-none" size={16}/></div>
-            </div>
+            <div className="flex flex-wrap items-center gap-4"><div className="flex items-center gap-2 bg-yellow-50 px-3 py-1 rounded border border-yellow-200"><CalendarDays size={18} className="text-yellow-700"/><div className="flex flex-col"><span className="text-[10px] text-yellow-800 font-bold uppercase">Tanggal Aktif</span><input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="bg-transparent text-sm font-bold text-slate-700 outline-none cursor-pointer"/></div></div><div className="relative"><select className="appearance-none bg-blue-600 text-white font-bold py-2 pl-4 pr-10 rounded-lg cursor-pointer focus:outline-none hover:bg-blue-700" value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)}>{classList.length === 0 && <option value="">(Buat Kelas Dulu)</option>}{classList.map(c => <option key={c} value={c}>{c}</option>)}</select><ChevronDown className="absolute right-3 top-3 text-white pointer-events-none" size={16}/></div></div>
         </header>
         <div className="flex-1 overflow-auto p-6 md:p-8 print:p-0 print:overflow-visible">
             {activeTab === 'identity' && <IdentitySection identity={identity} setIdentity={setIdentity} classList={classList} setClassList={setClassList} selectedClass={selectedClass} setSelectedClass={setSelectedClass}/>}
@@ -571,8 +441,6 @@ const App = () => {
   );
 };
 
-const NavItem = ({ icon, label, active, onClick, open }) => (
-  <button onClick={onClick} className={`w-full flex items-center gap-4 px-4 py-3 transition-colors ${active ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><div>{icon}</div>{open && <span className="font-medium text-sm">{label}</span>}</button>
-);
+const NavItem = ({ icon, label, active, onClick, open }) => (<button onClick={onClick} className={`w-full flex items-center gap-4 px-4 py-3 transition-colors ${active ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><div>{icon}</div>{open && <span className="font-medium text-sm">{label}</span>}</button>);
 
 export default App;
